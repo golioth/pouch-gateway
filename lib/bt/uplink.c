@@ -11,6 +11,7 @@
 #include <zephyr/bluetooth/gatt.h>
 
 #include <pouch/transport/gatt/common/packetizer.h>
+#include <pouch/transport/gatt/common/receiver.h>
 
 #include <pouch_gateway/types.h>
 #include <pouch_gateway/uplink.h>
@@ -22,84 +23,42 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(uplink_gatt, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
 
-static uint8_t handle_uplink_payload(struct bt_conn *conn, const void *data, uint16_t length)
+static int uplink_data_received_cb(void *conn,
+                                   const void *data,
+                                   size_t length,
+                                   bool is_first,
+                                   bool is_last)
 {
-    bool is_first = false;
-    bool is_last = false;
-    const void *payload = NULL;
-    ssize_t payload_len = pouch_gatt_packetizer_decode(data, length, &payload, &is_first, &is_last);
-    if (payload_len < 0)
-    {
-        LOG_ERR("Failed to decode BLE GATT %s (err %d)", "Uplink", (int) payload_len);
-        pouch_gateway_bt_finished(conn);
-        return BT_GATT_ITER_STOP;
-    }
-
-    if (data)
-    {
-        LOG_HEXDUMP_INF(data, length, "[READ] BLE GATT Uplink");
-    }
-
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
 
-    int ret = pouch_gateway_uplink_write(node->uplink, payload, payload_len, is_last);
-    if (ret)
+    int err = pouch_gateway_uplink_write(node->uplink, data, length, is_last);
+    if (err)
     {
-        LOG_ERR("Failed to write to pouch (err %d)", ret);
-        pouch_gateway_bt_finished(conn);
-        return BT_GATT_ITER_STOP;
+        LOG_ERR("Failed to write uplink data: %d", err);
+        pouch_gateway_uplink_close(node->uplink);
+        node->uplink = NULL;
     }
-
-    if (is_last)
+    else if (is_last)
     {
         pouch_gateway_uplink_close(node->uplink);
         node->uplink = NULL;
-
-        if (!IS_ENABLED(CONFIG_POUCH_GATEWAY_CLOUD))
-        {
-            pouch_gateway_bt_finished(conn);
-        }
-
-        return BT_GATT_ITER_STOP;
     }
 
-    return BT_GATT_ITER_CONTINUE;
+    return err;
 }
 
-/* Callback for handling BLE GATT Uplink Response */
-static uint8_t tf_uplink_read_cb(struct bt_conn *conn,
-                                 uint8_t err,
-                                 struct bt_gatt_read_params *params,
-                                 const void *data,
-                                 uint16_t length)
+static int send_ack_cb(void *conn, const void *data, size_t length)
 {
-    if (err)
-    {
-        LOG_ERR("Failed to read BLE GATT %s (err %d)", "Uplink", err);
-        return BT_GATT_ITER_STOP;
-    }
+    struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
+    uint16_t handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_UPLINK].value;
 
-    err = handle_uplink_payload(conn, data, length);
-
-    if (BT_GATT_ITER_STOP == err)
-    {
-        return err;
-    }
-
-    err = bt_gatt_read(conn, params);
-    if (err)
-    {
-        LOG_ERR("BT (re)read request failed: %d", err);
-        return BT_GATT_ITER_STOP;
-    }
-
-    return BT_GATT_ITER_STOP;
+    return bt_gatt_write_without_response_cb(conn, handle, data, length, false, NULL, NULL);
 }
 
-static uint8_t tf_uplink_indicate_cb(struct bt_conn *conn,
-                                     struct bt_gatt_subscribe_params *params,
-                                     const void *data,
-                                     uint16_t length)
+static uint8_t uplink_notify_cb(struct bt_conn *conn,
+                                struct bt_gatt_subscribe_params *params,
+                                const void *data,
+                                uint16_t length)
 {
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
 
@@ -107,27 +66,51 @@ static uint8_t tf_uplink_indicate_cb(struct bt_conn *conn,
     {
         LOG_DBG("Subscription terminated");
 
-        if (node->uplink)
-        {
-            LOG_WRN("Subscription terminated while uplink is open");
-            pouch_gateway_uplink_close(node->uplink);
-            node->uplink = NULL;
+        pouch_gatt_receiver_destroy(node->uplink_receiver);
+        node->uplink_receiver = NULL;
 
-            pouch_gateway_bt_finished(conn);
+        return BT_GATT_ITER_STOP;
+    }
+
+    if (NULL == node->uplink_receiver)
+    {
+        enum pouch_gatt_ack_code code;
+        if (pouch_gatt_packetizer_is_fin(data, length, &code))
+        {
+            LOG_WRN("Received FIN while idle: %d", code);
+        }
+        else
+        {
+            LOG_ERR("Received packet while idle");
+
+            pouch_gatt_receiver_send_nack(send_ack_cb, conn, POUCH_GATT_NACK_IDLE);
         }
 
         return BT_GATT_ITER_STOP;
     }
 
-    return handle_uplink_payload(conn, data, length);
+    bool complete;
+    int err = pouch_gatt_receiver_receive_data(node->uplink_receiver, data, length, &complete);
+    if (err)
+    {
+        LOG_ERR("Error receiving data: %d", err);
+        pouch_gateway_bt_finished(conn);
+
+        return BT_GATT_ITER_STOP;
+    }
+
+    if (complete)
+    {
+        return BT_GATT_ITER_STOP;
+    }
+
+    return BT_GATT_ITER_CONTINUE;
 }
 
 static void uplink_end_cb(void *conn, enum pouch_gateway_uplink_result res)
 {
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
     node->uplink = NULL;
-
-    bt_gatt_unsubscribe(conn, &node->subscribe_params);
 
     if (POUCH_GATEWAY_UPLINK_SUCCESS != res)
     {
@@ -155,34 +138,26 @@ void pouch_gateway_uplink_start(struct bt_conn *conn)
         return;
     }
 
+    node->uplink_receiver = pouch_gatt_receiver_create(send_ack_cb,
+                                                       conn,
+                                                       uplink_data_received_cb,
+                                                       conn,
+                                                       CONFIG_POUCH_GATT_UPLINK_WINDOW_SIZE);
+
     if (node->attr_handles[POUCH_GATEWAY_GATT_ATTR_UPLINK].ccc)
     {
-        struct bt_gatt_subscribe_params *subscribe_params = &node->subscribe_params;
+        struct bt_gatt_subscribe_params *subscribe_params = &node->uplink_subscribe_params;
         memset(subscribe_params, 0, sizeof(*subscribe_params));
 
-        subscribe_params->notify = tf_uplink_indicate_cb;
-        subscribe_params->value = BT_GATT_CCC_INDICATE;
+        subscribe_params->notify = uplink_notify_cb;
+        subscribe_params->value = BT_GATT_CCC_NOTIFY;
         subscribe_params->value_handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_UPLINK].value;
         subscribe_params->ccc_handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_UPLINK].ccc;
+        atomic_set_bit(subscribe_params->flags, BT_GATT_SUBSCRIBE_FLAG_VOLATILE);
         int err = bt_gatt_subscribe(conn, subscribe_params);
         if (err)
         {
             LOG_ERR("BT subscribe request failed: %d", err);
-            pouch_gateway_bt_finished(conn);
-        }
-    }
-    else
-    {
-        struct bt_gatt_read_params *read_params = &node->read_params;
-        memset(read_params, 0, sizeof(*read_params));
-
-        read_params->func = tf_uplink_read_cb;
-        read_params->handle_count = 1;
-        read_params->single.handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_UPLINK].value;
-        int err = bt_gatt_read(conn, read_params);
-        if (err)
-        {
-            LOG_ERR("BT read request failed: %d", err);
             pouch_gateway_bt_finished(conn);
         }
     }
@@ -191,6 +166,14 @@ void pouch_gateway_uplink_start(struct bt_conn *conn)
 void pouch_gateway_uplink_cleanup(struct bt_conn *conn)
 {
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
+
+    bt_gatt_unsubscribe(conn, &node->uplink_subscribe_params);
+
+    if (node->uplink_receiver)
+    {
+        pouch_gatt_receiver_destroy(node->uplink_receiver);
+        node->uplink_receiver = NULL;
+    }
 
     if (node->uplink)
     {
