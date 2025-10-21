@@ -73,6 +73,8 @@ static void block_upload_callback(struct golioth_client *client,
 {
     struct pouch_gateway_uplink *uplink = arg;
 
+    // status = GOLIOTH_ERR_TIMEOUT;
+
     if (!atomic_test_and_clear_bit(uplink->flags, POUCH_UPLINK_SENDING))
     {
         LOG_ERR("Not sending");

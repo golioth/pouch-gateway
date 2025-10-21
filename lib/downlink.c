@@ -15,7 +15,7 @@
 #include <pouch_gateway/downlink.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(downlink);
+LOG_MODULE_REGISTER(downlink, LOG_LEVEL_DBG);
 
 enum
 {
@@ -166,8 +166,12 @@ int pouch_gateway_downlink_get_data(struct pouch_gateway_downlink_context *downl
                     atomic_set_bit(downlink->flags, DOWNLINK_FLAG_COMPLETE);
                     return 0;
                 }
+                LOG_DBG("dst_len: %d, aborted: %s",
+                        *dst_len,
+                        atomic_test_bit(downlink->flags, DOWNLINK_FLAG_ABORTED) ? "true" : "false");
                 if (0 == *dst_len)
                 {
+                    LOG_DBG("Client waiting bit set");
                     /* We could not provide any data to the client, so we will
                        notify them the next time we receive a block */
                     atomic_set_bit(downlink->flags, DOWNLINK_FLAG_CLIENT_WAITING);
