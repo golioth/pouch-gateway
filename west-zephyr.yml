@@ -27,7 +27,7 @@ manifest:
 
     - name: pouch
       path: pouch
-      revision: 33fab68b77132ec29711a124016cea40aa0e4dd3
+      revision: application_level_acks
       url: https://github.com/golioth/pouch
 
   self:
