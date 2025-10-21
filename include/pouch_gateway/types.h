@@ -29,19 +29,23 @@ struct pouch_gateway_attr_handle
     uint16_t ccc;
 };
 
+struct pouch_gatt_sender;
+
 struct pouch_gateway_node_info
 {
     struct pouch_gateway_attr_handle attr_handles[POUCH_GATEWAY_GATT_ATTRS];
-    union
-    {
-        struct bt_gatt_discover_params discover_params;
-        struct bt_gatt_read_params read_params;
-        struct bt_gatt_subscribe_params subscribe_params;
-        struct bt_gatt_write_params write_params;
-    };
+    struct bt_gatt_discover_params discover_params;
+    struct bt_gatt_subscribe_params info_subscribe_params;
+    struct bt_gatt_subscribe_params server_cert_subscribe_params;
+    struct bt_gatt_subscribe_params device_cert_subscribe_params;
+    struct bt_gatt_subscribe_params uplink_subscribe_params;
+    struct bt_gatt_subscribe_params downlink_subscribe_params;
     struct pouch_gateway_downlink_context *downlink_ctx;
-    void *downlink_scratch;
-    void *server_cert_scratch;
+    struct pouch_gatt_receiver *info_receiver;
+    struct pouch_gatt_sender *server_cert_sender;
+    struct pouch_gatt_receiver *device_cert_receiver;
+    struct pouch_gatt_sender *downlink_sender;
+    struct pouch_gatt_receiver *uplink_receiver;
     struct pouch_gatt_packetizer *packetizer;
     struct pouch_gateway_uplink *uplink;
     struct pouch_gateway_info_context *info_ctx;
