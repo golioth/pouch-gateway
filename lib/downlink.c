@@ -106,7 +106,8 @@ void pouch_gateway_downlink_end_cb(enum golioth_status status,
 
         /* If transport is waiting for a block, kick it */
 
-        if (NULL == downlink->current_block)
+        if (!atomic_test_bit(downlink->flags, DOWNLINK_FLAG_ABORTED) &&
+            (NULL == downlink->current_block))
         {
             downlink->data_available_cb(downlink->cb_arg);
         }
