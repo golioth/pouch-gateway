@@ -39,6 +39,33 @@ config POUCH_GATEWAY_SERVER_CERT_BUILTIN
     bool
     default y if !POUCH_GATEWAY_CLOUD
 
+config POUCH_GATT_INFO_WINDOW_SIZE
+    int "Info GATT Window Size"
+    range 1 127
+    default 4
+    help
+        The number of unacknowledged packets that can be received by
+        the device on the info characteristic. Larger numbers can
+        increase throughput but will use more RAM.
+
+config POUCH_GATT_DEVICE_CERT_WINDOW_SIZE
+    int "Device Cert GATT Window Size"
+    range 1 127
+    default 4
+    help
+        The number of unacknowledged packets that can be received by
+        the device on the device certificate characteristic. Larger
+        numbers can increase throughput but will use more RAM.
+
+config POUCH_GATT_UPLINK_WINDOW_SIZE
+    int "Uplink GATT Window Size"
+    range 1 127
+    default 4
+    help
+        The number of unacknowledged packets that can be received by
+        the device on the uplink characteristic. Larger numbers can
+        increase throughput but will use more RAM.
+
 module = POUCH_GATEWAY
 module-str = Pouch Gateway Library
 source "subsys/logging/Kconfig.template.log_config"
