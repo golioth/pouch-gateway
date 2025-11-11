@@ -51,72 +51,6 @@ static void server_cert_cleanup(struct bt_conn *conn)
     }
 }
 
-static uint8_t server_cert_read_cb(struct bt_conn *conn,
-                                   uint8_t err,
-                                   struct bt_gatt_read_params *params,
-                                   const void *data,
-                                   uint16_t length)
-{
-    if (err)
-    {
-        LOG_ERR("Failed to read BLE GATT %s (err %d)", "server cert", err);
-        return BT_GATT_ITER_STOP;
-    }
-
-    if (length == 0)
-    {
-        gateway_server_cert_write_start(conn);
-        return BT_GATT_ITER_STOP;
-    }
-
-    bool is_first = false;
-    bool is_last = false;
-    const void *payload = NULL;
-    ssize_t payload_len = pouch_gatt_packetizer_decode(data, length, &payload, &is_first, &is_last);
-    if (payload_len < 0)
-    {
-        LOG_ERR("Failed to decode BLE GATT %s (err %d)", "server cert", (int) payload_len);
-        server_cert_cleanup(conn);
-        pouch_gateway_bt_finished(conn);
-        return BT_GATT_ITER_STOP;
-    }
-
-    if (data)
-    {
-        LOG_HEXDUMP_DBG(data, length, "[READ] BLE GATT server cert");
-    }
-
-    if (is_last)
-    {
-        uint8_t serial[CERT_SERIAL_MAXLEN];
-        size_t serial_len = sizeof(serial);
-
-        pouch_gateway_server_cert_get_serial(serial, &serial_len);
-
-        if (payload_len > 0 && payload_len == serial_len
-            && memcmp(serial, payload, payload_len) == 0)
-        {
-            LOG_DBG("server cert match");
-            gateway_device_cert_read_start(conn);
-        }
-        else
-        {
-            LOG_DBG("server cert mismatch");
-            gateway_server_cert_write_start(conn);
-        }
-
-        return BT_GATT_ITER_STOP;
-    }
-
-    err = bt_gatt_read(conn, params);
-    if (err)
-    {
-        LOG_ERR("BT (re)read request failed: %d", err);
-        return BT_GATT_ITER_STOP;
-    }
-
-    return BT_GATT_ITER_STOP;
-}
 
 static void device_cert_cleanup(struct bt_conn *conn)
 {
@@ -262,6 +196,7 @@ static void write_response_cb(struct bt_conn *conn,
         {
             // There was certificate update in the meantime, so send it once again.
             LOG_INF("Noticed certificate update, sending once again");
+            node->server_cert_provisioned = false;
             gateway_server_cert_write_start(conn);
         }
     }
@@ -301,6 +236,12 @@ static void gateway_server_cert_write_start(struct bt_conn *conn)
 {
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
 
+    if (node->server_cert_provisioned)
+    {
+        gateway_device_cert_read_start(conn);
+        return;
+    }
+
     if (0 == node->attr_handles[POUCH_GATEWAY_GATT_ATTR_SERVER_CERT].value)
     {
         LOG_ERR("%s characteristic undiscovered", "server cert");
@@ -339,28 +280,15 @@ static void gateway_server_cert_write_start(struct bt_conn *conn)
     write_server_cert_characteristic(conn);
 }
 
-static void gateway_server_cert_serial_read_start(struct bt_conn *conn)
-{
-    struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
-
-    struct bt_gatt_read_params *read_params = &node->read_params;
-    memset(read_params, 0, sizeof(*read_params));
-
-    read_params->func = server_cert_read_cb;
-    read_params->handle_count = 1;
-    read_params->single.handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_SERVER_CERT].value;
-    int err = bt_gatt_read(conn, read_params);
-    if (err)
-    {
-        LOG_ERR("BT read request failed: %d", err);
-        server_cert_cleanup(conn);
-        pouch_gateway_bt_finished(conn);
-    }
-}
-
 static void gateway_device_cert_read_start(struct bt_conn *conn)
 {
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
+
+    if (node->device_cert_provisioned)
+    {
+        pouch_gateway_uplink_start(conn);
+        return;
+    }
 
     struct bt_gatt_read_params *read_params = &node->read_params;
     memset(read_params, 0, sizeof(*read_params));
@@ -388,5 +316,5 @@ static void gateway_device_cert_read_start(struct bt_conn *conn)
 
 void pouch_gateway_cert_exchange_start(struct bt_conn *conn)
 {
-    gateway_server_cert_serial_read_start(conn);
+    gateway_server_cert_write_start(conn);
 }

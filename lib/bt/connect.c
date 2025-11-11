@@ -15,8 +15,8 @@
 
 #include <pouch_gateway/types.h>
 #include <pouch_gateway/bt/connect.h>
-#include <pouch_gateway/bt/cert.h>
 #include <pouch_gateway/bt/downlink.h>
+#include <pouch_gateway/bt/info.h>
 #include <pouch_gateway/bt/scan.h>
 #include <pouch_gateway/bt/uplink.h>
 
@@ -79,7 +79,7 @@ static uint8_t discover_descriptors(struct bt_conn *conn,
     if (node->attr_handles[POUCH_GATEWAY_GATT_ATTR_SERVER_CERT].value
         && node->attr_handles[POUCH_GATEWAY_GATT_ATTR_DEVICE_CERT].value)
     {
-        pouch_gateway_cert_exchange_start(conn);
+        pouch_gateway_info_read_start(conn);
     }
     else
     {
