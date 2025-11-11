@@ -44,8 +44,11 @@ struct pouch_gateway_node_info
     void *server_cert_scratch;
     struct pouch_gatt_packetizer *packetizer;
     struct pouch_gateway_uplink *uplink;
+    struct pouch_gateway_info_context *info_ctx;
     struct pouch_gateway_device_cert_context *device_cert_ctx;
     struct pouch_gateway_server_cert_context *server_cert_ctx;
+    bool server_cert_provisioned;
+    bool device_cert_provisioned;
 };
 
 /**

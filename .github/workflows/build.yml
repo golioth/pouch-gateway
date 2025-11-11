@@ -82,6 +82,7 @@ jobs:
       - name: Install pip packages
         run: |
           uv pip install \
+            -r pouch-gateway/requirements.txt \
             -r zephyr/scripts/requirements-base.txt
 
           uv pip install            \
