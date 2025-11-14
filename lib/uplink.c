@@ -125,6 +125,10 @@ static void process_uplink(struct pouch_gateway_uplink *uplink)
 
     if (!IS_ENABLED(CONFIG_POUCH_GATEWAY_CLOUD))
     {
+        free(uplink->rblock);
+        uplink->rblock = NULL;
+        atomic_clear_bit(uplink->flags, POUCH_UPLINK_SENDING);
+
         return;
     }
 
