@@ -130,8 +130,8 @@ static uint8_t discover_characteristics(struct bt_conn *conn,
         }
     }
 
-    /* Descriptors start after the value handle (i.e. 2 after the characteristic handle) */
-    params->start_handle += 2;
+    /* Descriptors start after the value handle */
+    params->start_handle += 1;
     params->func = discover_descriptors;
     params->type = BT_GATT_DISCOVER_DESCRIPTOR;
     params->uuid = &gatt_ccc_uuid.uuid;
