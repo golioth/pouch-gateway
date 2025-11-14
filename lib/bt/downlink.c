@@ -156,7 +156,6 @@ struct pouch_gateway_downlink_context *pouch_gateway_downlink_start(struct bt_co
 
     if (!IS_ENABLED(CONFIG_POUCH_GATEWAY_CLOUD))
     {
-        pouch_gateway_bt_finished(conn);
         return NULL;
     }
 

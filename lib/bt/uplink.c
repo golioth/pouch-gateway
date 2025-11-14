@@ -54,6 +54,11 @@ static uint8_t handle_uplink_payload(struct bt_conn *conn, const void *data, uin
         pouch_gateway_uplink_close(node->uplink);
         node->uplink = NULL;
 
+        if (!IS_ENABLED(CONFIG_POUCH_GATEWAY_CLOUD))
+        {
+            pouch_gateway_bt_finished(conn);
+        }
+
         return BT_GATT_ITER_STOP;
     }
 
