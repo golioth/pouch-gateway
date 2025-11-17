@@ -45,6 +45,11 @@ struct pouch_gateway_device_cert_context *pouch_gateway_device_cert_start(void)
     struct pouch_gateway_device_cert_context *context =
         malloc(sizeof(struct pouch_gateway_device_cert_context));
 
+    if (context == NULL)
+    {
+        return NULL;
+    }
+
     context->len = 0;
 
     return context;
@@ -93,6 +98,11 @@ struct pouch_gateway_server_cert_context *pouch_gateway_server_cert_start(void)
 {
     struct pouch_gateway_server_cert_context *context =
         malloc(sizeof(struct pouch_gateway_server_cert_context));
+
+    if (context == NULL)
+    {
+        return NULL;
+    }
 
     context->id = atomic_get(&server_crt_id);
     context->offset = 0;
