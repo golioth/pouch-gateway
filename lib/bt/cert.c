@@ -328,6 +328,13 @@ static void gateway_server_cert_write_start(struct bt_conn *conn)
     }
     node->packetizer =
         pouch_gatt_packetizer_start_callback(server_cert_fill_cb, node->server_cert_ctx);
+    if (node->packetizer == NULL)
+    {
+        LOG_ERR("Failed to start packetizer");
+        server_cert_cleanup(conn);
+        pouch_gateway_bt_finished(conn);
+        return;
+    }
 
     write_server_cert_characteristic(conn);
 }
