@@ -167,8 +167,24 @@ struct pouch_gateway_downlink_context *pouch_gateway_downlink_start(struct bt_co
     }
 
     node->downlink_ctx = pouch_gateway_downlink_open(downlink_data_available, conn);
+    if (node->downlink_ctx == NULL)
+    {
+        LOG_ERR("Failed to open downlink");
+        free(node->downlink_scratch);
+        node->downlink_scratch = NULL;
+        return NULL;
+    }
     node->packetizer =
         pouch_gatt_packetizer_start_callback(downlink_packet_fill_cb, node->downlink_ctx);
+    if (node->packetizer == NULL)
+    {
+        LOG_ERR("Failed to start packetizer");
+        pouch_gateway_downlink_close(node->downlink_ctx);
+        node->downlink_ctx = NULL;
+        free(node->downlink_scratch);
+        node->downlink_scratch = NULL;
+        return NULL;
+    }
 
     return node->downlink_ctx;
 }
