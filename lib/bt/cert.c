@@ -319,6 +319,13 @@ static void gateway_server_cert_write_start(struct bt_conn *conn)
     }
 
     node->server_cert_ctx = pouch_gateway_server_cert_start();
+    if (node->server_cert_ctx == NULL)
+    {
+        LOG_ERR("Failed to allocate server cert context");
+        server_cert_cleanup(conn);
+        pouch_gateway_bt_finished(conn);
+        return;
+    }
     node->packetizer =
         pouch_gatt_packetizer_start_callback(server_cert_fill_cb, node->server_cert_ctx);
 
@@ -352,6 +359,13 @@ static void gateway_device_cert_read_start(struct bt_conn *conn)
     memset(read_params, 0, sizeof(*read_params));
 
     node->device_cert_ctx = pouch_gateway_device_cert_start();
+    if (node->device_cert_ctx == NULL)
+    {
+        LOG_ERR("Failed to allocate device cert context");
+        device_cert_cleanup(conn);
+        pouch_gateway_bt_finished(conn);
+        return;
+    }
 
     read_params->func = device_cert_read_cb;
     read_params->handle_count = 1;
