@@ -134,6 +134,12 @@ void pouch_gateway_uplink_start(struct bt_conn *conn)
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
 
     struct pouch_gateway_downlink_context *downlink = pouch_gateway_downlink_start(conn);
+    if (downlink == NULL)
+    {
+        LOG_ERR("Failed to start downlink");
+        pouch_gateway_bt_finished(conn);
+        return;
+    }
 
     node->uplink = pouch_gateway_uplink_open(downlink, uplink_end_cb, conn);
     if (node->uplink == NULL)
