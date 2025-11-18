@@ -125,6 +125,8 @@ static int server_crt_update(size_t len)
     if (ret < 0)
     {
         LOG_ERR("Failed to parse certificate: 0x%x", -ret);
+        mbedtls_x509_crt_free(&cert_chain);
+
         return -EIO;
     }
 
@@ -135,6 +137,8 @@ static int server_crt_update(size_t len)
 
     atomic_set(&server_crt_len, len);
     atomic_inc(&server_crt_id);
+
+    mbedtls_x509_crt_free(&cert_chain);
 
     return 0;
 }
