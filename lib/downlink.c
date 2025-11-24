@@ -15,7 +15,7 @@
 #include <pouch_gateway/downlink.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(downlink);
+LOG_MODULE_REGISTER(downlink, CONFIG_POUCH_GATEWAY_LOG_LEVEL);
 
 enum
 {

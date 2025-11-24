@@ -15,7 +15,7 @@
 #include <pouch_gateway/uplink.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(uplink);
+LOG_MODULE_REGISTER(uplink, CONFIG_POUCH_GATEWAY_LOG_LEVEL);
 
 enum pouch_flags
 {

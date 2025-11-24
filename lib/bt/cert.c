@@ -19,7 +19,7 @@
 #include <pouch_gateway/cert.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(cert_gatt);
+LOG_MODULE_REGISTER(cert_gatt, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
 
 static void gateway_server_cert_write_start(struct bt_conn *conn);
 static void gateway_device_cert_read_start(struct bt_conn *conn);

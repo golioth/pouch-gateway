@@ -12,7 +12,7 @@
 #include <pouch/transport/gatt/common/uuids.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(scan);
+LOG_MODULE_REGISTER(scan, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
 
 #include <pouch_gateway/bt/scan.h>
 

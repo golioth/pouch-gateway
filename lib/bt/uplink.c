@@ -19,7 +19,7 @@
 #include <pouch_gateway/bt/uplink.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(uplink_gatt);
+LOG_MODULE_REGISTER(uplink_gatt, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
 
 static uint8_t handle_uplink_payload(struct bt_conn *conn, const void *data, uint16_t length)
 {

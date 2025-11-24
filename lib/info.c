@@ -15,7 +15,7 @@
 #include <cddl/info_decode.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(info);
+LOG_MODULE_REGISTER(info, CONFIG_POUCH_GATEWAY_LOG_LEVEL);
 
 #define INFO_MAX_SIZE 64
 

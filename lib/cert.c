@@ -18,7 +18,7 @@
 #include <zephyr/sys/atomic_types.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(cert);
+LOG_MODULE_REGISTER(cert, CONFIG_POUCH_GATEWAY_LOG_LEVEL);
 
 static struct golioth_client *_client;
 
