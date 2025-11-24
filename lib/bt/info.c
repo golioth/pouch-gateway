@@ -12,7 +12,7 @@
 #include <pouch_gateway/bt/info.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(info_gatt);
+LOG_MODULE_REGISTER(info_gatt, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
 
 static void info_cleanup(struct bt_conn *conn)
 {

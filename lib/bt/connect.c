@@ -21,7 +21,7 @@
 #include <pouch_gateway/bt/uplink.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(connect);
+LOG_MODULE_REGISTER(connect, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
 
 static const struct bt_uuid_128 golioth_svc_uuid_128 =
     BT_UUID_INIT_128(POUCH_GATT_UUID_SVC_VAL_128);

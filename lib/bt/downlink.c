@@ -18,7 +18,7 @@
 #include <pouch_gateway/downlink.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(downlink_gatt);
+LOG_MODULE_REGISTER(downlink_gatt, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
 
 static void write_response_cb(struct bt_conn *conn,
                               uint8_t err,

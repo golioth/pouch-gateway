@@ -39,4 +39,12 @@ config POUCH_GATEWAY_SERVER_CERT_BUILTIN
     bool
     default y if !POUCH_GATEWAY_CLOUD
 
+module = POUCH_GATEWAY
+module-str = Pouch Gateway Library
+source "subsys/logging/Kconfig.template.log_config"
+
+module = POUCH_GATEWAY_GATT
+module-str = Pouch Gateway GATT Library
+source "subsys/logging/Kconfig.template.log_config"
+
 endif # POUCH_GATEWAY
