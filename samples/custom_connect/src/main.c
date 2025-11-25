@@ -132,6 +132,15 @@ static void bt_connected(struct bt_conn *conn, uint8_t err)
 
     LOG_INF("Connected: %s", addr);
 
+    err = bt_conn_set_security(conn, BT_SECURITY_L2);
+    if (err)
+    {
+        LOG_ERR("Failed to set security (%d).", err);
+
+        bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        return;
+    }
+
     sync_data.conn = conn;
     sync_data.counter = 0;
 
@@ -152,9 +161,47 @@ static void bt_disconnected(struct bt_conn *conn, uint8_t reason)
     custom_scan_start();
 }
 
+static void security_changed(struct bt_conn *conn, bt_security_t level, enum bt_security_err err)
+{
+    LOG_INF("BT security changed to level %u, err %s(%u)", level, bt_security_err_to_str(err), err);
+}
+
 BT_CONN_CB_DEFINE(conn_callbacks) = {
     .connected = bt_connected,
     .disconnected = bt_disconnected,
+    .security_changed = security_changed,
+};
+
+static void auth_cancel(struct bt_conn *conn)
+{
+    char addr[BT_ADDR_LE_STR_LEN];
+
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+    LOG_INF("Pairing cancelled: %s", addr);
+}
+
+static struct bt_conn_auth_cb auth_cb = {
+    .cancel = auth_cancel,
+};
+
+static void pairing_complete(struct bt_conn *conn, bool bonded)
+{
+    LOG_INF("Pairing Complete");
+}
+
+static void pairing_failed(struct bt_conn *conn, enum bt_security_err reason)
+{
+    LOG_WRN("Pairing Failed (%d). Disconnecting.", reason);
+
+    bt_conn_disconnect(conn,
+                       (reason == BT_SECURITY_ERR_PAIR_NOT_ALLOWED) ? BT_HCI_ERR_PAIRING_NOT_ALLOWED
+                                                                    : BT_HCI_ERR_AUTH_FAIL);
+}
+
+static struct bt_conn_auth_info_cb auth_info_cb = {
+    .pairing_complete = pairing_complete,
+    .pairing_failed = pairing_failed,
 };
 
 static void sync_start_handler(struct k_work *work)
@@ -196,6 +243,12 @@ int main(void)
     {
         LOG_ERR("Bluetooth init failed (err %d)", err);
         return err;
+    }
+
+    if (IS_ENABLED(CONFIG_BT_SMP))
+    {
+        bt_conn_auth_cb_register(&auth_cb);
+        bt_conn_auth_info_cb_register(&auth_info_cb);
     }
 
     LOG_INF("Bluetooth initialized");
