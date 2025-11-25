@@ -7,6 +7,9 @@ configdefault NET_SHELL
 configdefault MBEDTLS_USE_PSA_CRYPTO
 	default n
 
+configdefault MBEDTLS_HEAP_SIZE
+	default 16384
+
 configdefault BT_CTLR_DATA_LENGTH_MAX
 	default 251
 
