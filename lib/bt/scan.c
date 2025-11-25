@@ -104,31 +104,31 @@ static void device_found(const bt_addr_le_t *addr,
         return;
     }
 
-    bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
-    LOG_DBG("Device found: %s (RSSI %d)", addr_str, rssi);
-
     bt_data_parse(ad, data_cb, &tf);
-    LOG_DBG("is_tf=%d version=0x%0x flags=0%0x",
-            (int) tf.is_tf,
-            tf.adv_data.version,
-            tf.adv_data.flags);
 
-    if (tf.is_tf && version_is_compatible(&tf.adv_data) && sync_requested(&tf.adv_data))
+    if (tf.is_tf)
     {
-        err = bt_le_scan_stop();
-        if (err)
-        {
-            LOG_ERR("Failed to stop scanning");
-            return;
-        }
+        bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+        LOG_DBG("Pouch device found: %s, (RSSI %d)", addr_str, rssi);
+        LOG_DBG("version=0x%0x flags=0%0x", tf.adv_data.version, tf.adv_data.flags);
 
-        struct bt_conn *conn = NULL;
-        err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &conn);
-        if (err)
+        if (version_is_compatible(&tf.adv_data) && sync_requested(&tf.adv_data))
         {
-            LOG_ERR("Create auto conn failed (%d)", err);
-            pouch_gateway_scan_start();
-            return;
+            err = bt_le_scan_stop();
+            if (err)
+            {
+                LOG_ERR("Failed to stop scanning");
+                return;
+            }
+
+            struct bt_conn *conn = NULL;
+            err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &conn);
+            if (err)
+            {
+                LOG_ERR("Create auto conn failed (%d)", err);
+                pouch_gateway_scan_start();
+                return;
+            }
         }
     }
 }
