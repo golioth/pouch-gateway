@@ -22,7 +22,8 @@ jobs:
       - name: Install pip packages
         run: |
           uv pip install \
-            -r zephyr/scripts/requirements-base.txt
+            -r zephyr/scripts/requirements-base.txt \
+            -r pouch-gateway/requirements.txt
 
           uv pip install          \
             cryptography==41.0.7  \
