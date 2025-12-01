@@ -1,6 +1,9 @@
 # Copyright (c) 2025 Golioth, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+configdefault NET_SHELL
+	default n
+
 configdefault MBEDTLS_USE_PSA_CRYPTO
 	default n
 
