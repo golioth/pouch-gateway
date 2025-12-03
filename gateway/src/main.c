@@ -168,8 +168,6 @@ static void bt_connected(struct bt_conn *conn, uint8_t err)
         bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
         return;
     }
-
-    pouch_gateway_bt_start(conn);
 }
 
 static void bt_disconnected(struct bt_conn *conn, uint8_t reason)
@@ -188,7 +186,25 @@ static void bt_disconnected(struct bt_conn *conn, uint8_t reason)
 
 static void security_changed(struct bt_conn *conn, bt_security_t level, enum bt_security_err err)
 {
-    LOG_INF("BT security changed to level %u, err %s(%u)", level, bt_security_err_to_str(err), err);
+    if (err)
+    {
+        LOG_ERR("BT security change failed. Current level: %d, err: %s(%u)",
+                level,
+                bt_security_err_to_str(err),
+                err);
+
+        struct bt_conn_info info;
+        bt_conn_get_info(conn, &info);
+
+        bt_unpair(info.id, info.le.dst);
+        bt_conn_disconnect(conn, BT_HCI_ERR_INSUFFICIENT_SECURITY);
+    }
+    else
+    {
+        LOG_INF("BT security changed to level %u", level);
+
+        pouch_gateway_bt_start(conn);
+    }
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
