@@ -57,9 +57,9 @@ jobs:
           mv artifacts/gateway-frdm_rw612-wifi/zephyr.elf \
             release/frdm_rw612-wifi.elf
 
-          mv artifacts/gateway-mg100/gateway/zephyr/zephyr.hex \
+          mv artifacts/gateway-mg100/zephyr.hex \
             release/mg100.hex
-          mv artifacts/gateway-mg100/gateway/zephyr/zephyr.elf \
+          mv artifacts/gateway-mg100/zephyr.elf \
             release/mg100.elf
 
 
