@@ -11,6 +11,7 @@
 #include <pouch/transport/gatt/common/types.h>
 #include <pouch/transport/gatt/common/uuids.h>
 
+#include <pouch_gateway/bt/bond.h>
 #include "scan.h"
 
 #include <zephyr/logging/log.h>
@@ -31,7 +32,9 @@ static inline bool sync_requested(const struct pouch_gatt_adv_data *adv_data)
 
 struct tf_data
 {
+    const bt_addr_le_t *addr;
     bool is_tf;
+    bool is_bonded;
     bool name_is_golioth;
     struct pouch_gatt_adv_data adv_data;
 };
@@ -77,6 +80,16 @@ static bool data_cb(struct bt_data *data, void *user_data)
     }
 }
 
+static void bond_filter(const struct bt_bond_info *info, void *user_data)
+{
+    struct tf_data *tf = user_data;
+
+    if (memcmp(&info->addr, tf->addr, sizeof(info->addr)) == 0)
+    {
+        tf->is_bonded = true;
+    }
+}
+
 static void device_found(const bt_addr_le_t *addr,
                          int8_t rssi,
                          uint8_t type,
@@ -95,35 +108,70 @@ static void device_found(const bt_addr_le_t *addr,
         return;
     }
 
-    bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
-    LOG_DBG("Device found: %s (RSSI %d)", addr_str, rssi);
-
     bt_data_parse(ad, data_cb, &tf);
-    LOG_DBG("is_tf=%d version=0x%0x flags=0%0x name_is_golioth=%d rssi=%d",
-            (int) tf.is_tf,
+
+    if (!tf.is_tf)
+    {
+        return;
+    }
+
+    bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+
+    if (IS_ENABLED(CONFIG_POUCH_GATEWAY_GATT_SCAN_FILTER_BONDED))
+    {
+        bt_foreach_bond(BT_ID_DEFAULT, bond_filter, &tf);
+
+        LOG_DBG("Pouch device found: %s, (RSSI %d) (bonded %d)",
+                addr_str,
+                rssi,
+                (int) tf.is_bonded);
+    }
+    else
+    {
+        LOG_DBG("Pouch device found: %s, (RSSI %d)", addr_str, rssi);
+    }
+
+    LOG_DBG("version=0x%0x flags=0%0x name_is_golioth=%d rssi=%d",
             tf.adv_data.version,
             tf.adv_data.flags,
             tf.name_is_golioth,
             rssi);
 
-    if (tf.is_tf && tf.name_is_golioth && rssi > -70 && version_is_compatible(&tf.adv_data)
-        && sync_requested(&tf.adv_data))
+    if (!version_is_compatible(&tf.adv_data) || !tf.name_is_golioth || rssi <= -70)
     {
-        err = bt_le_scan_stop();
-        if (err)
-        {
-            LOG_ERR("Failed to stop scanning");
-            return;
-        }
+        return;
+    }
 
-        struct bt_conn *conn = NULL;
-        err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &conn);
-        if (err)
-        {
-            LOG_ERR("Create auto conn failed (%d)", err);
-            custom_scan_start();
-            return;
-        }
+    if (!tf.is_bonded && !pouch_gateway_bonding_is_enabled())
+    {
+        return;
+    }
+
+    if (tf.is_bonded && !sync_requested(&tf.adv_data))
+    {
+        return;
+    }
+
+    err = bt_le_scan_stop();
+    if (err)
+    {
+        LOG_ERR("Failed to stop scanning");
+        return;
+    }
+
+    struct bt_conn *conn = NULL;
+    err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &conn);
+    if (err)
+    {
+        LOG_ERR("Create auto conn failed (%d)", err);
+        custom_scan_start();
+        return;
+    }
+
+    /* Disable bonding after first connect attempt */
+    if (!tf.is_bonded)
+    {
+        pouch_gateway_bonding_disable();
     }
 }
 
