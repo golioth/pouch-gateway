@@ -9,6 +9,7 @@
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/dhcpv4.h>
+#include <zephyr/drivers/gpio.h>
 
 #include <golioth/client.h>
 #include <golioth/gateway.h>
@@ -16,6 +17,7 @@
 
 #include <pouch/transport/gatt/common/types.h>
 
+#include <pouch_gateway/bt/bond.h>
 #include <pouch_gateway/bt/connect.h>
 #include <pouch_gateway/cert.h>
 #include <pouch_gateway/downlink.h>
@@ -36,6 +38,31 @@ struct sync_data
 static struct sync_data sync_data;
 
 struct golioth_client *client;
+
+static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET_OR(DT_ALIAS(sw0), gpios, {});
+static struct gpio_callback button_cb_data;
+static struct bt_conn *default_conn;
+
+static const k_timeout_t bonding_timeout = K_SECONDS(30);
+static const bt_security_t bt_security =
+    IS_ENABLED(CONFIG_POUCH_GATEWAY_GATT_SCAN_FILTER_BONDED) ? BT_SECURITY_L4 : BT_SECURITY_L2;
+
+static void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+    if (default_conn)
+    {
+        LOG_INF("Confirming passkey");
+        bt_conn_auth_passkey_confirm(default_conn);
+    }
+    else if (pouch_gateway_bonding_is_enabled())
+    {
+        LOG_WRN("Bonding already enabled");
+    }
+    else
+    {
+        pouch_gateway_bonding_enable(bonding_timeout);
+    }
+}
 
 #ifdef CONFIG_POUCH_GATEWAY_CLOUD
 
@@ -131,8 +158,9 @@ static void bt_connected(struct bt_conn *conn, uint8_t err)
     }
 
     LOG_INF("Connected: %s", addr);
+    default_conn = conn;
 
-    err = bt_conn_set_security(conn, BT_SECURITY_L2);
+    err = bt_conn_set_security(conn, bt_security);
     if (err)
     {
         LOG_ERR("Failed to set security (%d).", err);
@@ -145,6 +173,8 @@ static void bt_connected(struct bt_conn *conn, uint8_t err)
 static void bt_disconnected(struct bt_conn *conn, uint8_t reason)
 {
     char addr[BT_ADDR_LE_STR_LEN];
+
+    default_conn = NULL;
 
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
     LOG_INF("Disconnected: %s, reason 0x%02x %s", addr, reason, bt_hci_err_to_str(reason));
@@ -197,8 +227,43 @@ static void auth_cancel(struct bt_conn *conn)
     LOG_INF("Pairing cancelled: %s", addr);
 }
 
+static void auth_passkey_confirm(struct bt_conn *conn, unsigned int passkey)
+{
+    char addr[BT_ADDR_LE_STR_LEN];
+    char passkey_str[7];
+
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+    snprintk(passkey_str, 7, "%06u", passkey);
+
+    LOG_INF("Confirm passkey for %s: %s", addr, passkey_str);
+
+    if (IS_ENABLED(CONFIG_SAMPLE_POUCH_GATEWAY_BT_AUTO_CONFIRM))
+    {
+        LOG_INF("Confirming passkey");
+        bt_conn_auth_passkey_confirm(conn);
+    }
+}
+
+static void auth_passkey_display(struct bt_conn *conn, unsigned int passkey)
+{
+    char addr[BT_ADDR_LE_STR_LEN];
+    char passkey_str[7];
+
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+    snprintk(passkey_str, 7, "%06u", passkey);
+
+    LOG_INF("Passkey for %s: %s", addr, passkey_str);
+}
+
 static struct bt_conn_auth_cb auth_cb = {
     .cancel = auth_cancel,
+
+    .passkey_confirm =
+        IS_ENABLED(CONFIG_POUCH_GATEWAY_GATT_SCAN_FILTER_BONDED) ? auth_passkey_confirm : NULL,
+    .passkey_display =
+        IS_ENABLED(CONFIG_POUCH_GATEWAY_GATT_SCAN_FILTER_BONDED) ? auth_passkey_display : NULL,
 };
 
 static void pairing_complete(struct bt_conn *conn, bool bonded)
@@ -243,10 +308,36 @@ void pouch_gateway_bt_finished(struct bt_conn *conn)
 
 int main(void)
 {
+    int err;
+
     LOG_INF("Gateway Version: " STRINGIFY(GIT_DESCRIBE));
     LOG_INF("Pouch BLE Transport Protocol Version: %d", POUCH_GATT_VERSION);
 
     k_work_init_delayable(&sync_data.work, sync_start_handler);
+
+    if (DT_HAS_ALIAS(sw0))
+    {
+        LOG_INF("Set up button at %s pin %d", button.port->name, button.pin);
+
+        err = gpio_pin_configure_dt(&button, GPIO_INPUT);
+        if (err < 0)
+        {
+            LOG_ERR("Could not initialize Button");
+        }
+
+        err = gpio_pin_interrupt_configure_dt(&button, GPIO_INT_EDGE_TO_ACTIVE);
+        if (err)
+        {
+            LOG_ERR("Error %d: failed to configure interrupt on %s pin %d",
+                    err,
+                    button.port->name,
+                    button.pin);
+            return 0;
+        }
+
+        gpio_init_callback(&button_cb_data, button_pressed, BIT(button.pin));
+        gpio_add_callback(button.port, &button_cb_data);
+    }
 
     connect_to_cloud();
 
@@ -254,7 +345,7 @@ int main(void)
     pouch_gateway_uplink_module_init(client);
     pouch_gateway_downlink_module_init(client);
 
-    int err = bt_enable(NULL);
+    err = bt_enable(NULL);
     if (err)
     {
         LOG_ERR("Bluetooth init failed (err %d)", err);
@@ -268,6 +359,11 @@ int main(void)
     }
 
     LOG_INF("Bluetooth initialized");
+
+    if (IS_ENABLED(CONFIG_SAMPLE_POUCH_GATEWAY_BT_AUTO_BOND))
+    {
+        pouch_gateway_bonding_enable(K_FOREVER);
+    }
 
     custom_scan_start();
 
