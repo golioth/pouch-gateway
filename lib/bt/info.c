@@ -36,6 +36,8 @@ static uint8_t info_read_cb(struct bt_conn *conn,
     if (err)
     {
         LOG_ERR("Failed to read BLE GATT %s (err %d)", "info", err);
+        info_cleanup(conn);
+        pouch_gateway_bt_finished(conn);
         return BT_GATT_ITER_STOP;
     }
 
