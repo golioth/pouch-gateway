@@ -74,6 +74,8 @@ static uint8_t device_cert_read_cb(struct bt_conn *conn,
     if (err)
     {
         LOG_ERR("Failed to read BLE GATT %s (err %d)", "device cert", err);
+        device_cert_cleanup(conn);
+        pouch_gateway_bt_finished(conn);
         return BT_GATT_ITER_STOP;
     }
 
