@@ -14,6 +14,7 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(scan, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
 
+#include <pouch_gateway/bt/bond.h>
 #include <pouch_gateway/bt/scan.h>
 
 static inline bool version_is_compatible(const struct pouch_gatt_adv_data *adv_data)
@@ -31,7 +32,9 @@ static inline bool sync_requested(const struct pouch_gatt_adv_data *adv_data)
 
 struct tf_data
 {
+    const bt_addr_le_t *addr;
     bool is_tf;
+    bool is_bonded;
     struct pouch_gatt_adv_data adv_data;
 };
 
@@ -86,6 +89,16 @@ static bool data_cb(struct bt_data *data, void *user_data)
     }
 }
 
+static void bond_filter(const struct bt_bond_info *info, void *user_data)
+{
+    struct tf_data *tf = user_data;
+
+    if (memcmp(&info->addr, tf->addr, sizeof(info->addr)) == 0)
+    {
+        tf->is_bonded = true;
+    }
+}
+
 static void device_found(const bt_addr_le_t *addr,
                          int8_t rssi,
                          uint8_t type,
@@ -93,7 +106,10 @@ static void device_found(const bt_addr_le_t *addr,
 {
     char addr_str[BT_ADDR_LE_STR_LEN];
     struct tf_data tf = {
+        .addr = addr,
         .is_tf = false,
+        /* When filtering bonded devices is disabled, treat all devices as bonded */
+        .is_bonded = IS_ENABLED(CONFIG_POUCH_GATEWAY_GATT_SCAN_FILTER_BONDED) ? false : true,
     };
     int err;
 
@@ -106,30 +122,64 @@ static void device_found(const bt_addr_le_t *addr,
 
     bt_data_parse(ad, data_cb, &tf);
 
-    if (tf.is_tf)
+    if (!tf.is_tf)
     {
-        bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+        return;
+    }
+
+    bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+
+    if (IS_ENABLED(CONFIG_POUCH_GATEWAY_GATT_SCAN_FILTER_BONDED))
+    {
+        bt_foreach_bond(BT_ID_DEFAULT, bond_filter, &tf);
+
+        LOG_DBG("Pouch device found: %s, (RSSI %d) (bonded %d)",
+                addr_str,
+                rssi,
+                (int) tf.is_bonded);
+    }
+    else
+    {
         LOG_DBG("Pouch device found: %s, (RSSI %d)", addr_str, rssi);
-        LOG_DBG("version=0x%0x flags=0%0x", tf.adv_data.version, tf.adv_data.flags);
+    }
 
-        if (version_is_compatible(&tf.adv_data) && sync_requested(&tf.adv_data))
-        {
-            err = bt_le_scan_stop();
-            if (err)
-            {
-                LOG_ERR("Failed to stop scanning");
-                return;
-            }
+    LOG_DBG("version=0x%0x flags=0%0x", tf.adv_data.version, tf.adv_data.flags);
 
-            struct bt_conn *conn = NULL;
-            err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &conn);
-            if (err)
-            {
-                LOG_ERR("Create auto conn failed (%d)", err);
-                pouch_gateway_scan_start();
-                return;
-            }
-        }
+    if (!version_is_compatible(&tf.adv_data))
+    {
+        return;
+    }
+
+    if (!tf.is_bonded && !pouch_gateway_bonding_is_enabled())
+    {
+        return;
+    }
+
+    if (tf.is_bonded && !sync_requested(&tf.adv_data))
+    {
+        return;
+    }
+
+    err = bt_le_scan_stop();
+    if (err)
+    {
+        LOG_ERR("Failed to stop scanning");
+        return;
+    }
+
+    struct bt_conn *conn = NULL;
+    err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &conn);
+    if (err)
+    {
+        LOG_ERR("Create auto conn failed (%d)", err);
+        pouch_gateway_scan_start();
+        return;
+    }
+
+    /* Disable bonding after first connect attempt */
+    if (!tf.is_bonded)
+    {
+        pouch_gateway_bonding_disable();
     }
 }
 
