@@ -1,5 +1,6 @@
 zephyr_library()
 
+zephyr_library_sources(bt/bond.c)
 zephyr_library_sources(bt/cert.c)
 zephyr_library_sources(bt/connect.c)
 zephyr_library_sources(bt/downlink.c)
