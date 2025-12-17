@@ -43,6 +43,14 @@ module = POUCH_GATEWAY
 module-str = Pouch Gateway Library
 source "subsys/logging/Kconfig.template.log_config"
 
+config POUCH_GATEWAY_GATT_SCAN_FILTER_BONDED
+    bool "Scan filter by bonded status"
+    help
+      Filter scanned devices by bonded status. Use it for authenticated
+      connections, so that discovered devices will be ignored when not bonded
+      already. Bonding can be triggered explicitly by calling
+      pouch_gateway_bonding_enable() API.
+
 module = POUCH_GATEWAY_GATT
 module-str = Pouch Gateway GATT Library
 source "subsys/logging/Kconfig.template.log_config"
