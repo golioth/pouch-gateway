@@ -13,6 +13,9 @@ configdefault MBEDTLS_HEAP_SIZE
 configdefault BT_CTLR_DATA_LENGTH_MAX
 	default 251
 
+configdefault MBEDTLS_PSA_CRYPTO_STORAGE_C
+	default n
+
 source "${ZEPHYR_GOLIOTH_FIRMWARE_SDK_MODULE_DIR}/examples/zephyr/common/Kconfig.defconfig"
 
 source "Kconfig.zephyr"
