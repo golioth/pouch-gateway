@@ -17,6 +17,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - manifest: west-ncs.yml
+            target: nrf9160dk/nrf9160/ns
+            app: ncs-serial-modem
+            sysbuild: true
+          - manifest: west-ncs.yml
+            target: nrf9160dk/nrf52840
+            app: gateway
+            sysbuild: true
           - manifest: west-zephyr.yml
             target: frdm_rw612
             artifact_suffix: -ethernet
