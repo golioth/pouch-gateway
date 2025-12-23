@@ -16,6 +16,7 @@ configuration is likely required. The easiest way to get started is to use one
 of the following targets that are already configured for this application:
 
 - NXP FRDM-RW612
+- Nordic nRF9160DK
 - Sentrius MG100 Gateway
 
 ### Release Binaries
@@ -63,6 +64,34 @@ recommend using these binaries as the fastest way to get started.
     ```
     wifi cred add -s <your-wifi-ssid> -p <your-wifi-password> -k 1
     wifi cred auto_connect
+    ```
+
+</details>
+
+<details>
+
+<summary>Flashing the nRF9160DK</summary>
+
+1. Install the
+[`nrfutil`](https://www.nordicsemi.com/Products/Development-tools/nRF-Util)
+CLI tool.
+2. Program the nRF9160 Serial Modem Firmware
+
+    a. Position the SWD selection switch (`SW10`) to `nRF91`
+
+    b. Issue the following command:
+    ```
+    nrfutil device program --firmware nrf9160dk_nrf9160.hex --x-family nrf91
+    ```
+
+3. Program the nRF52840 Gateway Firmware
+
+    a. Power cycle the device and position the SWD selection switch (`SW10`) to
+    `nRF52`
+
+    b. Issue the following command:
+    ```
+    nrfutil device program --firmware nrf9160dk_nrf52840.hex --x-family nrf52
     ```
 
 </details>
@@ -117,6 +146,33 @@ west patch apply
 ```
 
 ### Build and run
+
+#### nRF9160 DK
+
+Serial modem firmware runs on the nRF9160 chip, providing LTE
+connectivity to the gateway over UART. Switch to serial modem manifest,
+build and flash by changing the `SWD` switch (`SW10`) to `nRF91`, then:
+
+```
+west config manifest.file ncs-serial-modem/west.yml
+west update
+west patch apply
+west build -p -b nrf9160dk/nrf9160/ns pouch-gateway/ncs-serial-modem/
+west flash
+```
+
+Gateway firmware runs on the nRF52840 chip. It runs the Bluetooth Host
+stack and communicates with the nRF9160 serial modem over UART for
+Internet access. Switch back to NCS manifest, build and flash by
+changing the `SWD` switch (`SW10`) to `nRF52`, then:
+
+```
+west config manifest.file west-ncs.yml
+west update
+west patch apply
+west build -p -b nrf9160dk/nrf52840 --sysbuild pouch-gateway/gateway/
+west flash
+```
 
 #### MG100
 
