@@ -4,7 +4,7 @@ manifest:
   projects:
     - name: golioth
       path: modules/lib/golioth-firmware-sdk
-      revision: 60f0e8ab323b6a812fd68759817bc1e27f3258e5
+      revision: b1747a974e4fea00bc9d706ea9c9909efcdb0c8b
       url: https://github.com/golioth/golioth-firmware-sdk.git
       import:
         file: west-zephyr.yml
