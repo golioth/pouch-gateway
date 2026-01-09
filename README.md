@@ -16,8 +16,6 @@ configuration is likely required. The easiest way to get started is to use one
 of the following targets that are already configured for this application:
 
 - NXP FRDM-RW612
-- Nordic Thingy:91 X
-- Nordic nRF9160DK
 - Sentrius MG100 Gateway
 
 ### Release Binaries
@@ -65,63 +63,6 @@ recommend using these binaries as the fastest way to get started.
     ```
     wifi cred add -s <your-wifi-ssid> -p <your-wifi-password> -k 1
     wifi cred auto_connect
-    ```
-
-</details>
-
-<details>
-
-<summary>Flashing the Thingy:91 X</summary>
-
-1. Install the
-[`nrfutil`](https://www.nordicsemi.com/Products/Development-tools/nRF-Util)
-CLI tool.
-2. Program the nRF5340 Bluetooth Controller Firmware
-
-    a. Position the SWD selection switch (`SW2`) to `nRF53`
-
-    b. Issue the following command to program the `app` core:
-    ```
-    nrfutil device program --firmware thingy91x_nrf5340_cpuapp.hex --x-family nrf53 --core application
-    ```
-    c. Issue the following command to program the `net` core:
-    ```
-    nrfutil device program --firmware thingy91x_nrf5340_cpunet.hex --x-family nrf53 --core network
-3. Program the nRF9151 Gateway Firmware
-
-    a. Power cycle the device and position the SWD selection switch (`SW2`) to
-    `nRF91`
-
-    b. Issue the following command:
-    ```
-    nrfutil device program --firmware thingy91x_nrf9151.hex --x-family nrf91
-    ```
-
-</details>
-
-<details>
-
-<summary>Flashing the nRF9160DK</summary>
-
-1. Install the
-[`nrfutil`](https://www.nordicsemi.com/Products/Development-tools/nRF-Util)
-CLI tool.
-2. Program the nRF52840 Bluetooth Controller Firmware
-
-    a. Position the SWD selection switch (`SW10`) to `nRF52`
-
-    b. Issue the following command:
-    ```
-    nrfutil device program --firmware nrf9160dk_nrf52840.hex --x-family nrf52
-    ```
-3. Program the nRF9160 Gateway Firmware
-
-    a. Power cycle the device and position the SWD selection switch (`SW10`) to
-    `nRF91`
-
-    b. Issue the following command:
-    ```
-    nrfutil device program --firmware nrf9160dk_nrf9160.hex --x-family nrf91
     ```
 
 </details>
@@ -176,62 +117,6 @@ west patch apply
 ```
 
 ### Build and run
-
-#### Thingy:91 X
-
-Controller on nRF5340 NET core does not work yet with newest NCS
-version (for unknown reason yet), so it is required to use older version
-of NCS which is specified in `west-thingy91x-controller.yml`. In order
-to checkout proper revision and apply required patches type:
-
-```
-west config manifest.file west-thingy91x-controller.yml && west update
-west forall zephyr -c "git am $(west topdir)/pouch-gateway/zephyr/patches/thingy91x-controller/zephyr/*.patch"
-```
-
-Bluetooth controller is running on the nRF5340 NET core. This means that proper
-firmware needs to be flashed (HCI controller over UART) in order to
-access Bluetooth from nRF9151 chip.
-
-This is done by by changing `SWD` switch (`SW2`) from `nRF91` to `nRF53`
-on Thingy, then building and flashing firmware with:
-
-```
-west build -p -b thingy91x/nrf5340/cpunet pouch-gateway/controller --sysbuild -- -DSB_CONF_FILE=sysbuild/nrf5340_cpuapp.conf
-west flash
-```
-
-Gateway firmware runs on nRF9151 chip. There is direct access to LTE
-modem and also Bluetooth Host stack, which communicates with Bluetooth
-Controller over UART. Build and flash it with:
-
-```
-west build -p -b thingy91x/nrf9151/ns pouch-gateway/gateway --sysbuild
-west flash
-```
-
-#### nRF9160 DK
-
-Bluetooth controller is running on nRF52840. This means that proper
-firmware needs to be flashed (HCI controller over UART) in order to
-access Bluetooth from nRF9160 chip.
-
-This is done by by changing `SWD` switch (`SW10`) from `nRF91` to
-`nRF52` on development kit, then building and flashing firmware with:
-
-```
-west build -p -b nrf9160dk/nrf52840 pouch-gateway/controller
-west flash
-```
-
-Gateway firmware runs on nRF9160 chip. There is direct access to LTE
-modem and also Bluetooth Host stack, which communicats with Bluetooth
-Controller over UART. Build and flash it with:
-
-```
-west build -p -b nrf9160dk/nrf9160/ns pouch-gateway/gateway --sysbuild
-west flash
-```
 
 #### MG100
 

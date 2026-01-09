@@ -106,7 +106,7 @@ Build Bluetooth Controller firmware with HCI UART over USB CDC-ACM for
 nRF52840 Dongle:
 
 ```
-west build -p -b nrf52840dongle/nrf52840 pouch-gateway/controller
+west build -p -b nrf52840dongle/nrf52840 zephyr/samples/bluetooth/hci_uart
 ```
 
 See [Programming and
