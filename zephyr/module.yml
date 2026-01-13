@@ -7,3 +7,7 @@ samples:
   - samples
 runners:
   - file: scripts/runners/__init__.py
+package-managers:
+  pip:
+    requirement-files:
+      - requirements.txt
