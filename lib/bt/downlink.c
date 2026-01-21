@@ -14,8 +14,11 @@
 #include <pouch/transport/gatt/common/packetizer.h>
 
 #include <pouch_gateway/bt/connect.h>
-#include <pouch_gateway/types.h>
+
 #include <pouch_gateway/downlink.h>
+#include <pouch_gateway/types.h>
+
+#include "downlink.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(downlink_gatt, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);

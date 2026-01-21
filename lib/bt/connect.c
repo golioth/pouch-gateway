@@ -15,10 +15,11 @@
 
 #include <pouch_gateway/types.h>
 #include <pouch_gateway/bt/connect.h>
-#include <pouch_gateway/bt/downlink.h>
-#include <pouch_gateway/bt/info.h>
 #include <pouch_gateway/bt/scan.h>
-#include <pouch_gateway/bt/uplink.h>
+
+#include "downlink.h"
+#include "info.h"
+#include "uplink.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(connect, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
