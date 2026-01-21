@@ -45,7 +45,7 @@ static uint8_t info_read_cb(struct bt_conn *conn,
     if (length == 0)
     {
         info_cleanup(conn);
-        pouch_gateway_cert_exchange_start(conn);
+        pouch_gateway_server_cert_write(conn);
         return BT_GATT_ITER_STOP;
     }
 
@@ -81,7 +81,7 @@ static uint8_t info_read_cb(struct bt_conn *conn,
         }
 
         info_cleanup(conn);
-        pouch_gateway_cert_exchange_start(conn);
+        pouch_gateway_server_cert_write(conn);
         return BT_GATT_ITER_STOP;
     }
 
