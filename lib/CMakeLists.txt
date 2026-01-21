@@ -1,11 +1,12 @@
 zephyr_library()
 
 zephyr_library_sources(bt/bond.c)
-zephyr_library_sources(bt/cert.c)
 zephyr_library_sources(bt/connect.c)
+zephyr_library_sources(bt/device_cert.c)
 zephyr_library_sources(bt/downlink.c)
 zephyr_library_sources(bt/info.c)
 zephyr_library_sources(bt/scan.c)
+zephyr_library_sources(bt/server_cert.c)
 zephyr_library_sources(bt/uplink.c)
 zephyr_library_sources(block.c)
 zephyr_library_sources(cert.c)

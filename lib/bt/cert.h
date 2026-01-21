@@ -9,8 +9,15 @@
 struct bt_conn;
 
 /**
- * Start certificate exchange for the given Bluetooth connection.
+ * Start server certificate download for the given Bluetooth connection.
  *
  * @param conn The Bluetooth connection.
  */
-void pouch_gateway_cert_exchange_start(struct bt_conn *conn);
+void pouch_gateway_server_cert_write(struct bt_conn *conn);
+
+/**
+ * Start device certificate upload for the given Bluetooth connection.
+ *
+ * @param conn The Bluetooth connection.
+ */
+void pouch_gateway_device_cert_read(struct bt_conn *conn);
