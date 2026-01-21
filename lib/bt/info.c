@@ -7,9 +7,10 @@
 #include <pouch/transport/gatt/common/packetizer.h>
 
 #include <pouch_gateway/info.h>
-#include <pouch_gateway/bt/cert.h>
 #include <pouch_gateway/bt/connect.h>
-#include <pouch_gateway/bt/info.h>
+
+#include "cert.h"
+#include "info.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(info_gatt, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);

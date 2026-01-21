@@ -12,11 +12,12 @@
 
 #include <pouch/transport/gatt/common/packetizer.h>
 
-#include <pouch_gateway/bt/cert.h>
 #include <pouch_gateway/bt/connect.h>
-#include <pouch_gateway/bt/uplink.h>
 
 #include <pouch_gateway/cert.h>
+
+#include "cert.h"
+#include "uplink.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(cert_gatt, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
