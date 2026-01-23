@@ -17,23 +17,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - manifest: west-ncs.yml
-            target: nrf9160dk/nrf9160/ns
-            app: gateway
-            sysbuild: true
-          - manifest: west-ncs.yml
-            target: nrf9160dk/nrf52840
-            app: controller
-            sysbuild: false
-          - manifest: west-ncs.yml
-            target: thingy91x/nrf9151/ns
-            app: gateway
-            sysbuild: true
-          - manifest: west-thingy91x-controller.yml
-            target: thingy91x/nrf5340/cpunet
-            app: controller
-            sysbuild: true
-            extra_args: -DSB_CONF_FILE=sysbuild/nrf5340_cpuapp.conf
           - manifest: west-zephyr.yml
             target: frdm_rw612
             artifact_suffix: -ethernet
@@ -73,11 +56,6 @@ jobs:
           git config --global user.email user@git-scm.com
           git config --global user.name "Git User"
           west patch apply || true
-
-      - name: Manual Patch
-        if: ${{ matrix.manifest == 'west-thingy91x-controller.yml' }}
-        run: |
-          west forall zephyr -c "git am $GITHUB_WORKSPACE/pouch-gateway/zephyr/patches/thingy91x-controller/zephyr/*.patch"
 
       - name: Install pip packages
         run: |
@@ -122,7 +100,4 @@ jobs:
             build/${{ matrix.sysbuild && matrix.app || '' }}/zephyr/zephyr.elf
             build/${{ matrix.sysbuild && matrix.app || '' }}/zephyr/zephyr.map
             ${{ ((matrix.manifest == 'west-ncs.yml') && 'build/merged.hex') || '' }}
-            ${{ ((matrix.manifest == 'west-thingy91x-controller.yml') && 'build/merged.hex') || '' }}
-            ${{ ((matrix.manifest == 'west-thingy91x-controller.yml') && 'build/merged_CPUAPP.hex') || '' }}
-            ${{ ((matrix.manifest == 'west-thingy91x-controller.yml') && 'build/empty_app_core/zephyr/zephyr.elf') || '' }}
             ${{ (matrix.sysbuild && (matrix.manifest == 'west-ncs.yml') && 'build/dfu_application.zip') || '' }}
