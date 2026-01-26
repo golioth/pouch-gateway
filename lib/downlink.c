@@ -20,8 +20,9 @@ LOG_MODULE_REGISTER(downlink, CONFIG_POUCH_GATEWAY_LOG_LEVEL);
 enum
 {
     DOWNLINK_FLAG_COMPLETE,
-    DOWNLINK_FLAG_ABORTED,
-    DOWNLINK_FLAG_CLIENT_WAITING,
+    DOWNLINK_FLAG_TRANSPORT_ABORTED,
+    DOWNLINK_FLAG_TRANSPORT_WAITING,
+    DOWNLINK_FLAG_COAP_ERROR,
     DOWNLINK_FLAG_COUNT,
 };
 
@@ -55,10 +56,8 @@ enum golioth_status pouch_gateway_downlink_block_cb(const uint8_t *data,
 {
     struct pouch_gateway_downlink_context *downlink = arg;
 
-    if (atomic_test_bit(downlink->flags, DOWNLINK_FLAG_ABORTED))
+    if (atomic_test_bit(downlink->flags, DOWNLINK_FLAG_TRANSPORT_ABORTED))
     {
-        flush_block_queue(&downlink->block_queue);
-        pouch_gateway_downlink_close(downlink);
         return GOLIOTH_ERR_NACK;
     }
 
@@ -66,7 +65,6 @@ enum golioth_status pouch_gateway_downlink_block_cb(const uint8_t *data,
     if (NULL == block)
     {
         LOG_ERR("Failed to allocate block");
-        flush_block_queue(&downlink->block_queue);
         pouch_gateway_downlink_close(downlink);
         return GOLIOTH_ERR_MEM_ALLOC;
     }
@@ -80,7 +78,7 @@ enum golioth_status pouch_gateway_downlink_block_cb(const uint8_t *data,
     k_fifo_put(&downlink->block_queue, block);
 
     if (NULL == downlink->current_block
-        && atomic_test_and_clear_bit(downlink->flags, DOWNLINK_FLAG_CLIENT_WAITING))
+        && atomic_test_and_clear_bit(downlink->flags, DOWNLINK_FLAG_TRANSPORT_WAITING))
     {
         downlink->data_available_cb(downlink->cb_arg);
     }
@@ -102,13 +100,23 @@ void pouch_gateway_downlink_end_cb(enum golioth_status status,
             LOG_ERR("CoAP error: %d.%02d", coap_rsp_code->code_class, coap_rsp_code->code_detail);
         }
 
-        pouch_gateway_downlink_abort(downlink);
+        /* If transport already aborted, close downlink */
 
-        /* If transport is waiting for a block, kick it */
-
-        if (NULL == downlink->current_block)
+        if (atomic_test_bit(downlink->flags, DOWNLINK_FLAG_TRANSPORT_ABORTED))
         {
-            downlink->data_available_cb(downlink->cb_arg);
+            pouch_gateway_downlink_close(downlink);
+        }
+        else
+        {
+            atomic_set_bit(downlink->flags, DOWNLINK_FLAG_COAP_ERROR);
+
+            /* If transport is waiting for a block, kick it */
+
+            if (NULL == downlink->current_block
+                && atomic_test_and_clear_bit(downlink->flags, DOWNLINK_FLAG_TRANSPORT_WAITING))
+            {
+                downlink->data_available_cb(downlink->cb_arg);
+            }
         }
     }
 }
@@ -129,8 +137,9 @@ struct pouch_gateway_downlink_context *pouch_gateway_downlink_open(
         downlink->current_block = NULL;
         downlink->offset = 0;
         atomic_clear_bit(downlink->flags, DOWNLINK_FLAG_COMPLETE);
-        atomic_clear_bit(downlink->flags, DOWNLINK_FLAG_ABORTED);
-        atomic_set_bit(downlink->flags, DOWNLINK_FLAG_CLIENT_WAITING);
+        atomic_clear_bit(downlink->flags, DOWNLINK_FLAG_TRANSPORT_ABORTED);
+        atomic_clear_bit(downlink->flags, DOWNLINK_FLAG_COAP_ERROR);
+        atomic_set_bit(downlink->flags, DOWNLINK_FLAG_TRANSPORT_WAITING);
         k_fifo_init(&downlink->block_queue);
     }
 
@@ -159,9 +168,9 @@ int pouch_gateway_downlink_get_data(struct pouch_gateway_downlink_context *downl
             if (NULL == downlink->current_block)
             {
                 *dst_len = total_bytes_copied;
-                if (atomic_test_bit(downlink->flags, DOWNLINK_FLAG_ABORTED))
+                if (atomic_test_bit(downlink->flags, DOWNLINK_FLAG_COAP_ERROR))
                 {
-                    /* We have aborted the downlink and the block queue is empty */
+                    /* We previously received a CoAP error and now the block queue is empty */
                     *is_last = true;
                     atomic_set_bit(downlink->flags, DOWNLINK_FLAG_COMPLETE);
                     return 0;
@@ -170,7 +179,7 @@ int pouch_gateway_downlink_get_data(struct pouch_gateway_downlink_context *downl
                 {
                     /* We could not provide any data to the client, so we will
                        notify them the next time we receive a block */
-                    atomic_set_bit(downlink->flags, DOWNLINK_FLAG_CLIENT_WAITING);
+                    atomic_set_bit(downlink->flags, DOWNLINK_FLAG_TRANSPORT_WAITING);
                 }
                 return -EAGAIN;
             }
@@ -212,6 +221,8 @@ bool pouch_gateway_downlink_is_complete(const struct pouch_gateway_downlink_cont
 
 void pouch_gateway_downlink_close(struct pouch_gateway_downlink_context *downlink)
 {
+    flush_block_queue(&downlink->block_queue);
+
     if (NULL != downlink->current_block)
     {
         block_free(downlink->current_block);
@@ -222,10 +233,12 @@ void pouch_gateway_downlink_close(struct pouch_gateway_downlink_context *downlin
 
 void pouch_gateway_downlink_abort(struct pouch_gateway_downlink_context *downlink)
 {
+    LOG_INF("Aborting downlink");
+
     /* Downlink will be aborted after the current in flight CoAP
        block request is completed. */
 
-    atomic_set_bit(downlink->flags, DOWNLINK_FLAG_ABORTED);
+    atomic_set_bit(downlink->flags, DOWNLINK_FLAG_TRANSPORT_ABORTED);
 
     /* If there are no more blocks, then just cleanup */
 
