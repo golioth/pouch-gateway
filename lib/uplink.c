@@ -210,14 +210,7 @@ int pouch_gateway_uplink_write(struct pouch_gateway_uplink *uplink,
         payload += bytes_to_copy;
     }
 
-    if (is_last)
-    {
-        pouch_gateway_uplink_close(uplink);
-    }
-    else
-    {
-        process_uplink(uplink);
-    }
+    process_uplink(uplink);
 
     return 0;
 }

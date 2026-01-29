@@ -44,6 +44,8 @@ int pouch_gateway_uplink_write(struct pouch_gateway_uplink *uplink,
 /**
  * Open an uplink for the given downlink context.
  *
+ * The uplink must be closed by a call to @ref pouch_gateway_uplink_close().
+ *
  * @param downlink The downlink context.
  * @return Pointer to the uplink context.
  */
