@@ -11,6 +11,7 @@
 #include <zephyr/bluetooth/gatt.h>
 
 #include <pouch/transport/gatt/common/packetizer.h>
+#include <pouch/transport/gatt/common/sender.h>
 
 #include <pouch_gateway/bt/connect.h>
 
@@ -21,19 +22,16 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(server_cert_gatt, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
 
-static void write_response_cb(struct bt_conn *conn,
-                              uint8_t err,
-                              struct bt_gatt_write_params *params);
+enum server_cert_next_state
+{
+    SERVER_CERT_NEXT_DEVICE_CERT,
+    SERVER_CERT_NEXT_SERVER_CERT,
+    SERVER_CERT_NEXT_END
+};
 
 static void server_cert_cleanup(struct bt_conn *conn)
 {
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
-
-    if (node->server_cert_scratch)
-    {
-        free(node->server_cert_scratch);
-        node->server_cert_scratch = NULL;
-    }
 
     if (node->server_cert_ctx)
     {
@@ -45,86 +43,6 @@ static void server_cert_cleanup(struct bt_conn *conn)
     {
         pouch_gatt_packetizer_finish(node->packetizer);
         node->packetizer = NULL;
-    }
-}
-
-static int write_server_cert_characteristic(struct bt_conn *conn)
-{
-    struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
-    struct bt_gatt_write_params *params = &node->write_params;
-    uint16_t server_cert_handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_SERVER_CERT].value;
-
-    size_t mtu = bt_gatt_get_mtu(conn);
-    if (mtu < POUCH_GATEWAY_BT_ATT_OVERHEAD)
-    {
-        LOG_ERR("MTU too small: %d", mtu);
-        return -EIO;
-    }
-
-    size_t len = mtu - POUCH_GATEWAY_BT_ATT_OVERHEAD;
-    enum pouch_gatt_packetizer_result ret =
-        pouch_gatt_packetizer_get(node->packetizer, node->server_cert_scratch, &len);
-
-    if (POUCH_GATT_PACKETIZER_ERROR == ret)
-    {
-        ret = pouch_gatt_packetizer_error(node->packetizer);
-        LOG_ERR("Error getting %s data %d", "server cert", ret);
-        return ret;
-    }
-
-    params->func = write_response_cb;
-    params->handle = server_cert_handle;
-    params->offset = 0;
-    params->data = node->server_cert_scratch;
-    params->length = len;
-
-    LOG_HEXDUMP_DBG(node->server_cert_scratch, params->length, "server_cert write");
-    LOG_DBG("Writing %d bytes to handle %d", params->length, params->handle);
-
-    int res = bt_gatt_write(conn, params);
-    if (0 > res)
-    {
-        server_cert_cleanup(conn);
-        pouch_gateway_bt_finished(conn);
-    }
-
-    return 0;
-}
-
-static void write_response_cb(struct bt_conn *conn,
-                              uint8_t err,
-                              struct bt_gatt_write_params *params)
-{
-    LOG_DBG("Received write response: %d", err);
-
-    struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
-
-    if (pouch_gateway_server_cert_is_complete(node->server_cert_ctx))
-    {
-        bool is_newest = pouch_gateway_server_cert_is_newest(node->server_cert_ctx);
-
-        server_cert_cleanup(conn);
-
-        if (is_newest)
-        {
-            pouch_gateway_device_cert_read(conn);
-        }
-        else
-        {
-            // There was certificate update in the meantime, so send it once again.
-            LOG_INF("Noticed certificate update, sending once again");
-            node->server_cert_provisioned = false;
-            pouch_gateway_server_cert_write(conn);
-        }
-    }
-    else
-    {
-        int ret = write_server_cert_characteristic(conn);
-        if (0 != ret)
-        {
-            server_cert_cleanup(conn);
-            pouch_gateway_bt_finished(conn);
-        }
     }
 }
 
@@ -149,12 +67,131 @@ static enum pouch_gatt_packetizer_result server_cert_fill_cb(void *dst,
     return last ? POUCH_GATT_PACKETIZER_NO_MORE_DATA : POUCH_GATT_PACKETIZER_MORE_DATA;
 }
 
-void pouch_gateway_server_cert_write(struct bt_conn *conn)
+static int send_data_cb(void *conn, const void *data, size_t length)
 {
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
 
-    if (node->server_cert_provisioned)
+    uint16_t server_cert_handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_SERVER_CERT].value;
+
+    int err = bt_gatt_write_without_response(conn, server_cert_handle, data, length, false);
+    if (err)
     {
+        /* This error gets propagated to server_cert_notify_cb via
+           pouch_gatt_sender_receive_ack, so no cleanup required here */
+
+        LOG_ERR("GATT write error: %d", err);
+    }
+
+    return err;
+}
+
+static uint8_t server_cert_notify_cb(struct bt_conn *conn,
+                                     struct bt_gatt_subscribe_params *params,
+                                     const void *data,
+                                     uint16_t length)
+{
+    static enum server_cert_next_state next = SERVER_CERT_NEXT_END;
+
+    struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
+
+    if (NULL == data)
+    {
+        LOG_DBG("Subscription terminated");
+
+        server_cert_cleanup(conn);
+
+        switch (next)
+        {
+            case SERVER_CERT_NEXT_DEVICE_CERT:
+                pouch_gateway_device_cert_read(conn);
+                break;
+
+            case SERVER_CERT_NEXT_SERVER_CERT:
+                pouch_gateway_server_cert_write(conn);
+                break;
+
+            case SERVER_CERT_NEXT_END:
+                pouch_gateway_bt_finished(conn);
+                break;
+        }
+
+        next = SERVER_CERT_NEXT_END;
+
+        return BT_GATT_ITER_STOP;
+    }
+
+    if (NULL == node->server_cert_sender)
+    {
+        if (pouch_gatt_packetizer_is_ack(data, length))
+        {
+            LOG_DBG("Received ACK while idle");
+
+            pouch_gatt_sender_send_fin(send_data_cb, conn, POUCH_GATT_NACK_IDLE);
+        }
+        else
+        {
+            /* Received NACK (or malformed packet) while idle. Do nothing */
+            LOG_WRN("Received NACK while idle");
+        }
+
+        next = SERVER_CERT_NEXT_END;
+
+        return BT_GATT_ITER_STOP;
+    }
+
+    bool complete = false;
+    int ret = pouch_gatt_sender_receive_ack(node->server_cert_sender, data, length, &complete);
+    if (0 > ret)
+    {
+        LOG_ERR("Error handling ack: %d", ret);
+
+        next = SERVER_CERT_NEXT_END;
+
+        return BT_GATT_ITER_STOP;
+    }
+
+    if (0 < ret)
+    {
+        LOG_WRN("Received NACK: %d", ret);
+
+        next = SERVER_CERT_NEXT_END;
+
+        return BT_GATT_ITER_STOP;
+    }
+
+    if (complete)
+    {
+        LOG_DBG("Server cert complete");
+
+        bool is_newest = pouch_gateway_server_cert_is_newest(node->server_cert_ctx);
+
+        if (is_newest)
+        {
+            next = SERVER_CERT_NEXT_DEVICE_CERT;
+        }
+        else
+        {
+            /* There was certificate update in the meantime, so send it again. */
+            LOG_INF("Noticed certificate update, sending again");
+
+            next = SERVER_CERT_NEXT_SERVER_CERT;
+        }
+
+        return BT_GATT_ITER_STOP;
+    }
+
+    return BT_GATT_ITER_CONTINUE;
+}
+
+void pouch_gateway_server_cert_write(struct bt_conn *conn)
+{
+    LOG_INF("Starting server cert write");
+
+    struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
+
+    if (false)  // node->server_cert_provisioned)
+    {
+        LOG_INF("Server cert already provisioned, skipping write");
         pouch_gateway_device_cert_read(conn);
         return;
     }
@@ -162,15 +199,6 @@ void pouch_gateway_server_cert_write(struct bt_conn *conn)
     if (0 == node->attr_handles[POUCH_GATEWAY_GATT_ATTR_SERVER_CERT].value)
     {
         LOG_ERR("%s characteristic undiscovered", "server cert");
-        server_cert_cleanup(conn);
-        pouch_gateway_bt_finished(conn);
-        return;
-    }
-
-    node->server_cert_scratch = pouch_gateway_bt_gatt_mtu_malloc(conn);
-    if (NULL == node->server_cert_scratch)
-    {
-        LOG_ERR("Could not allocate space for %s scratch buffer", "server cert");
         server_cert_cleanup(conn);
         pouch_gateway_bt_finished(conn);
         return;
@@ -184,6 +212,7 @@ void pouch_gateway_server_cert_write(struct bt_conn *conn)
         pouch_gateway_bt_finished(conn);
         return;
     }
+
     node->packetizer =
         pouch_gatt_packetizer_start_callback(server_cert_fill_cb, node->server_cert_ctx);
     if (node->packetizer == NULL)
@@ -194,5 +223,36 @@ void pouch_gateway_server_cert_write(struct bt_conn *conn)
         return;
     }
 
-    write_server_cert_characteristic(conn);
+    size_t mtu = bt_gatt_get_mtu(conn) - POUCH_GATEWAY_BT_ATT_OVERHEAD;
+
+    node->server_cert_sender = pouch_gatt_sender_create(node->packetizer, send_data_cb, conn, mtu);
+    if (NULL == node->server_cert_sender)
+    {
+        LOG_ERR("Failed to create sender");
+        server_cert_cleanup(conn);
+        pouch_gateway_bt_finished(conn);
+        return;
+    }
+
+    struct bt_gatt_subscribe_params *subscribe_params = &node->server_cert_subscribe_params;
+    if (NULL == subscribe_params)
+    {
+        LOG_ERR("Could not subscribe to server cert characteristic");
+        server_cert_cleanup(conn);
+        pouch_gateway_bt_finished(conn);
+        return;
+    }
+
+    memset(subscribe_params, 0, sizeof(*subscribe_params));
+    subscribe_params->notify = server_cert_notify_cb;
+    subscribe_params->value = BT_GATT_CCC_NOTIFY;
+    subscribe_params->value_handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_SERVER_CERT].value;
+    subscribe_params->ccc_handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_SERVER_CERT].ccc;
+    int err = bt_gatt_subscribe(conn, subscribe_params);
+    if (err)
+    {
+        LOG_ERR("Could not subscribe to server cert characteristic");
+        server_cert_cleanup(conn);
+        pouch_gateway_bt_finished(conn);
+    }
 }

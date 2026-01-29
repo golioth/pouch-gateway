@@ -12,6 +12,7 @@
 #include <zephyr/bluetooth/gatt.h>
 
 #include <pouch/transport/gatt/common/packetizer.h>
+#include <pouch/transport/gatt/common/sender.h>
 
 #include <pouch_gateway/bt/connect.h>
 
@@ -23,9 +24,30 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(downlink_gatt, CONFIG_POUCH_GATEWAY_GATT_LOG_LEVEL);
 
-static void write_response_cb(struct bt_conn *conn,
-                              uint8_t err,
-                              struct bt_gatt_write_params *params);
+static bool subscribed = false;
+
+static void cleanup_downlink(const struct bt_conn *conn)
+{
+    struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
+
+    if (node->downlink_ctx)
+    {
+        pouch_gateway_downlink_abort(node->downlink_ctx);
+        node->downlink_ctx = NULL;
+    }
+
+    if (node->packetizer)
+    {
+        pouch_gatt_packetizer_finish(node->packetizer);
+        node->packetizer = NULL;
+    }
+
+    if (node->downlink_sender)
+    {
+        pouch_gatt_sender_destroy(node->downlink_sender);
+        node->downlink_sender = NULL;
+    }
+}
 
 static enum pouch_gatt_packetizer_result downlink_packet_fill_cb(void *dst,
                                                                  size_t *dst_len,
@@ -37,10 +59,13 @@ static enum pouch_gatt_packetizer_result downlink_packet_fill_cb(void *dst,
     if (-EAGAIN == ret)
     {
         LOG_DBG("Awaiting additional downlink data from cloud");
+
         return POUCH_GATT_PACKETIZER_MORE_DATA;
     }
     if (0 > ret)
     {
+        LOG_ERR("Error getting downlink data: %d", ret);
+
         *dst_len = 0;
         return POUCH_GATT_PACKETIZER_ERROR;
     }
@@ -48,87 +73,90 @@ static enum pouch_gatt_packetizer_result downlink_packet_fill_cb(void *dst,
     return last ? POUCH_GATT_PACKETIZER_NO_MORE_DATA : POUCH_GATT_PACKETIZER_MORE_DATA;
 }
 
-static int write_downlink_characteristic(struct bt_conn *conn)
+static int send_data_cb(void *conn, const void *data, size_t length)
 {
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
-    struct bt_gatt_write_params *params = &node->write_params;
     uint16_t downlink_handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_DOWNLINK].value;
 
-    size_t mtu = bt_gatt_get_mtu(conn);
-    if (mtu < POUCH_GATEWAY_BT_ATT_OVERHEAD)
+    int err = bt_gatt_write_without_response(conn, downlink_handle, data, length, false);
+    if (err)
     {
-        LOG_ERR("MTU too small: %d", mtu);
-        return -EIO;
+        /* This error gets propagated to downlink_notify_cb via
+           pouch_gatt_sender_receive_ack, so no cleanup required here */
+
+        LOG_ERR("GATT write error: %d", err);
     }
 
-    size_t len = mtu - POUCH_GATEWAY_BT_ATT_OVERHEAD;
-    enum pouch_gatt_packetizer_result ret =
-        pouch_gatt_packetizer_get(node->packetizer, node->downlink_scratch, &len);
-
-    if (POUCH_GATT_PACKETIZER_ERROR == ret)
-    {
-        ret = pouch_gatt_packetizer_error(node->packetizer);
-        LOG_ERR("Error getting downlink data %d", ret);
-        return ret;
-    }
-
-    if (POUCH_GATT_PACKETIZER_EMPTY_PAYLOAD == ret)
-    {
-        LOG_DBG("No downlink data available");
-        return -ENODATA;
-    }
-
-    params->func = write_response_cb;
-    params->handle = downlink_handle;
-    params->offset = 0;
-    params->data = node->downlink_scratch;
-    params->length = len;
-
-    LOG_DBG("Writing %d bytes to handle %d", params->length, params->handle);
-
-    int res = bt_gatt_write(conn, params);
-    if (0 > res)
-    {
-        LOG_ERR("GATT write error: %d", res);
-    }
-
-    return res;
+    return err;
 }
 
-static void write_response_cb(struct bt_conn *conn,
-                              uint8_t err,
-                              struct bt_gatt_write_params *params)
+static uint8_t downlink_notify_cb(struct bt_conn *conn,
+                                  struct bt_gatt_subscribe_params *params,
+                                  const void *data,
+                                  uint16_t length)
 {
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
 
-    LOG_DBG("Received write response: %d", err);
-    if (err)
+    if (NULL == data)
     {
-        pouch_gateway_downlink_abort(node->downlink_ctx);
-        pouch_gatt_packetizer_finish(node->packetizer);
+        LOG_DBG("Subscription terminated");
 
+        cleanup_downlink(conn);
         pouch_gateway_bt_finished(conn);
-        return;
+
+        return BT_GATT_ITER_STOP;
     }
 
-    if (pouch_gateway_downlink_is_complete(node->downlink_ctx))
+    if (NULL == node->downlink_sender)
     {
-        pouch_gateway_downlink_close(node->downlink_ctx);
-        pouch_gatt_packetizer_finish(node->packetizer);
-
-        pouch_gateway_bt_finished(conn);
-    }
-    else
-    {
-        int ret = write_downlink_characteristic(conn);
-        if (0 != ret && -ENODATA != ret)
+        if (pouch_gatt_packetizer_is_ack(data, length))
         {
-            pouch_gateway_downlink_abort(node->downlink_ctx);
-            pouch_gatt_packetizer_finish(node->packetizer);
+            LOG_DBG("Received ACK while idle");
 
-            pouch_gateway_bt_finished(conn);
+            pouch_gatt_sender_send_fin(send_data_cb, conn, POUCH_GATT_NACK_IDLE);
         }
+        else
+        {
+            /* Received NACK (or malformed packet) while idle. Do nothing */
+            LOG_WRN("Received NACK while idle");
+        }
+
+        return BT_GATT_ITER_STOP;
     }
+
+    bool complete = false;
+    int ret = pouch_gatt_sender_receive_ack(node->downlink_sender, data, length, &complete);
+    if (0 > ret)
+    {
+        LOG_ERR("Error handling ack: %d", ret);
+
+        cleanup_downlink(conn);
+
+        return BT_GATT_ITER_STOP;
+    }
+
+    if (0 < ret)
+    {
+        LOG_WRN("Received NACK: %d", ret);
+
+        cleanup_downlink(conn);
+
+        return BT_GATT_ITER_STOP;
+    }
+
+    if (complete)
+    {
+        LOG_DBG("Downlink complete");
+
+        pouch_gateway_downlink_close(node->downlink_ctx);
+        node->downlink_ctx = NULL;
+
+        cleanup_downlink(conn);
+
+        return BT_GATT_ITER_STOP;
+    }
+
+    return BT_GATT_ITER_CONTINUE;
 }
 
 static void downlink_data_available(void *arg)
@@ -137,13 +165,32 @@ static void downlink_data_available(void *arg)
 
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
 
-    int ret = write_downlink_characteristic(conn);
-    if (0 != ret)
+    if (!subscribed)
     {
-        pouch_gateway_downlink_abort(node->downlink_ctx);
-        pouch_gatt_packetizer_finish(node->packetizer);
+        struct bt_gatt_subscribe_params *subscribe_params = &node->downlink_subscribe_params;
+        memset(subscribe_params, 0, sizeof(*subscribe_params));
 
-        pouch_gateway_bt_finished(conn);
+        subscribe_params->notify = downlink_notify_cb;
+        subscribe_params->value = BT_GATT_CCC_NOTIFY;
+        subscribe_params->value_handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_DOWNLINK].value;
+        subscribe_params->ccc_handle = node->attr_handles[POUCH_GATEWAY_GATT_ATTR_DOWNLINK].ccc;
+        atomic_set_bit(subscribe_params->flags, BT_GATT_SUBSCRIBE_FLAG_VOLATILE);
+        int err = bt_gatt_subscribe(conn, subscribe_params);
+        if (err)
+        {
+            LOG_ERR("BT subscribe request failed: %d", err);
+
+            cleanup_downlink(conn);
+            pouch_gateway_bt_finished(conn);
+
+            return;
+        }
+
+        subscribed = true;
+    }
+    else
+    {
+        pouch_gatt_sender_data_available(node->downlink_sender);
     }
 }
 
@@ -162,32 +209,37 @@ struct pouch_gateway_downlink_context *pouch_gateway_downlink_start(struct bt_co
         return NULL;
     }
 
-    node->downlink_scratch = pouch_gateway_bt_gatt_mtu_malloc(conn);
-    if (NULL == node->downlink_scratch)
+    size_t mtu = bt_gatt_get_mtu(conn) - POUCH_GATEWAY_BT_ATT_OVERHEAD;
+
+    node->downlink_ctx = pouch_gateway_downlink_open(downlink_data_available, conn);
+    if (NULL == node->downlink_ctx)
     {
-        LOG_ERR("Could not allocate space for downlink scratch buffer");
+        LOG_ERR("Failed to open downlink");
         return NULL;
     }
 
-    node->downlink_ctx = pouch_gateway_downlink_open(downlink_data_available, conn);
-    if (node->downlink_ctx == NULL)
-    {
-        LOG_ERR("Failed to open downlink");
-        free(node->downlink_scratch);
-        node->downlink_scratch = NULL;
-        return NULL;
-    }
     node->packetizer =
         pouch_gatt_packetizer_start_callback(downlink_packet_fill_cb, node->downlink_ctx);
-    if (node->packetizer == NULL)
+    if (NULL == node->packetizer)
     {
         LOG_ERR("Failed to start packetizer");
-        pouch_gateway_downlink_close(node->downlink_ctx);
-        node->downlink_ctx = NULL;
-        free(node->downlink_scratch);
-        node->downlink_scratch = NULL;
+
+        cleanup_downlink(conn);
+
         return NULL;
     }
+
+    node->downlink_sender = pouch_gatt_sender_create(node->packetizer, send_data_cb, conn, mtu);
+    if (NULL == node->downlink_sender)
+    {
+        LOG_ERR("Failed to create sender");
+
+        cleanup_downlink(conn);
+
+        return NULL;
+    }
+
+    subscribed = false;
 
     return node->downlink_ctx;
 }
@@ -196,9 +248,5 @@ void pouch_gateway_downlink_cleanup(struct bt_conn *conn)
 {
     struct pouch_gateway_node_info *node = pouch_gateway_get_node_info(conn);
 
-    if (node->downlink_scratch)
-    {
-        free(node->downlink_scratch);
-        node->downlink_scratch = NULL;
-    }
+    bt_gatt_unsubscribe(conn, &node->downlink_subscribe_params);
 }
