@@ -65,7 +65,6 @@ enum golioth_status pouch_gateway_downlink_block_cb(const uint8_t *data,
     if (NULL == block)
     {
         LOG_ERR("Failed to allocate block");
-        pouch_gateway_downlink_close(downlink);
         return GOLIOTH_ERR_MEM_ALLOC;
     }
 
