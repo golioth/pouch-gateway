@@ -106,22 +106,22 @@ CLI tool.
 1. Install the
 [`nrfutil`](https://www.nordicsemi.com/Products/Development-tools/nRF-Util)
 CLI tool.
-2. Program the nRF52840 Bluetooth Controller Firmware
+2. Program the nRF9160 Modem Firmware
 
-    a. Position the SWD selection switch (`SW10`) to `nRF52`
-
-    b. Issue the following command:
-    ```
-    nrfutil device program --firmware nrf9160dk_nrf52840.hex --x-family nrf52
-    ```
-3. Program the nRF9160 Gateway Firmware
-
-    a. Power cycle the device and position the SWD selection switch (`SW10`) to
-    `nRF91`
+    a. Position the SWD selection switch (`SW10`) to `nRF91`
 
     b. Issue the following command:
     ```
     nrfutil device program --firmware nrf9160dk_nrf9160.hex --x-family nrf91
+    ```
+3. Program the nRF52840 Gateway Firmware
+
+    a. Power cycle the device and position the SWD selection switch (`SW10`) to
+    `nRF52`
+
+    b. Issue the following command:
+    ```
+    nrfutil device program --firmware nrf9160dk_nrf52840.hex --x-family nrf52
     ```
 
 </details>
@@ -212,24 +212,37 @@ west flash
 
 #### nRF9160 DK
 
-Bluetooth controller is running on nRF52840. This means that proper
-firmware needs to be flashed (HCI controller over UART) in order to
-access Bluetooth from nRF9160 chip.
-
-This is done by by changing `SWD` switch (`SW10`) from `nRF91` to
-`nRF52` on development kit, then building and flashing firmware with:
+The nRF9160 chip runs modem firmware only (Serial LTE Modem application)
+and exposes AT commands and PPP for networking. The modem firmware is
+built from the nRF Connect SDK repository:
 
 ```
-west build -p -b nrf9160dk/nrf52840 pouch-gateway/controller
+west build -p -b nrf9160dk/nrf9160/ns \
+      nrf/applications/serial_lte_modem \
+      -- \
+      -DEXTRA_CONF_FILE="overlay-cmux.conf;overlay-ppp.conf;overlay-zephyr-modem.conf;overlay-zephyr-modem-nrf9160dk-nrf52840.conf" \
+      -DEXTRA_DTC_OVERLAY_FILE="overlay-zephyr-modem-nrf9160dk-nrf52840.overlay"
+```
+
+Change `SWD` switch (`SW10`) from `nRF52` to `nRF91` on development kit, then
+flash the modem firmware:
+
+```
 west flash
 ```
 
-Gateway firmware runs on nRF9160 chip. There is direct access to LTE
-modem and also Bluetooth Host stack, which communicats with Bluetooth
-Controller over UART. Build and flash it with:
+Gateway firmware runs on the nRF52840 chip, which is the main MCU. It has
+direct access to Bluetooth and communicates with the nRF9160 modem over UART
+using PPP and AT commands. Build and flash it with:
 
 ```
-west build -p -b nrf9160dk/nrf9160/ns pouch-gateway/gateway --sysbuild
+west build -p -b nrf9160dk/nrf52840 pouch-gateway/gateway --sysbuild
+```
+
+Change `SWD` switch (`SW10`) from `nRF91` to `nRF52` on development kit, then
+flash the gateway firmware:
+
+```
 west flash
 ```
 
