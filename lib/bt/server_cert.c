@@ -220,7 +220,15 @@ void pouch_gateway_server_cert_write(struct bt_conn *conn)
         return;
     }
 
-    size_t mtu = bt_gatt_get_mtu(conn) - POUCH_GATEWAY_BT_ATT_OVERHEAD;
+    size_t mtu = bt_gatt_get_mtu(conn);
+    if (mtu < POUCH_GATEWAY_BT_ATT_OVERHEAD)
+    {
+        LOG_ERR("MTU too small");
+        server_cert_cleanup(conn);
+        pouch_gateway_bt_finished(conn);
+        return;
+    }
+    mtu -= POUCH_GATEWAY_BT_ATT_OVERHEAD;
 
     node->server_cert_sender = pouch_gatt_sender_create(node->packetizer, send_data_cb, conn, mtu);
     if (NULL == node->server_cert_sender)

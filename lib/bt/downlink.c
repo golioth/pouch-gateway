@@ -199,7 +199,13 @@ struct pouch_gateway_downlink_context *pouch_gateway_downlink_start(struct bt_co
         return NULL;
     }
 
-    size_t mtu = bt_gatt_get_mtu(conn) - POUCH_GATEWAY_BT_ATT_OVERHEAD;
+    size_t mtu = bt_gatt_get_mtu(conn);
+    if (mtu < POUCH_GATEWAY_BT_ATT_OVERHEAD)
+    {
+        LOG_ERR("MTU too small");
+        return NULL;
+    }
+    mtu -= POUCH_GATEWAY_BT_ATT_OVERHEAD;
 
     node->downlink_ctx = pouch_gateway_downlink_open(downlink_data_available, conn);
     if (NULL == node->downlink_ctx)
