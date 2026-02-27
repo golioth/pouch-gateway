@@ -22,6 +22,11 @@ manifest:
           - zcbor
           - zephyr
 
+    - name: ncs-serial-modem
+      path: ncs-serial-modem
+      revision: v1.0.0
+      url: https://github.com/nrfconnect/ncs-serial-modem.git
+
     - name: pouch
       path: pouch
       revision: 8ba82567c5048d09849f7fa2c7be2e366cfdd824
