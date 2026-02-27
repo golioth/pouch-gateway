@@ -1,0 +1,50 @@
+From 53230cfcff089efbf16275fb891d6003a35ea1f5 Mon Sep 17 00:00:00 2001
+From: Marcin Niestroj <m.niestroj@emb.dev>
+Date: Wed, 11 Feb 2026 22:32:19 +0100
+Subject: [PATCH] modem: uart: delay 50ms after triggering modem
+
+---
+ subsys/modem/backends/modem_backend_uart_async.c      | 1 +
+ subsys/modem/backends/modem_backend_uart_async_hwfc.c | 1 +
+ subsys/modem/backends/modem_backend_uart_isr.c        | 1 +
+ 3 files changed, 3 insertions(+)
+
+diff --git a/subsys/modem/backends/modem_backend_uart_async.c b/subsys/modem/backends/modem_backend_uart_async.c
+index 0cfcff9e86e..aeba4c68161 100644
+--- a/subsys/modem/backends/modem_backend_uart_async.c
++++ b/subsys/modem/backends/modem_backend_uart_async.c
+@@ -166,6 +166,7 @@ static int modem_backend_uart_async_open(void *data)
+ 	}
+ 	if (backend->dtr_gpio) {
+ 		gpio_pin_set_dt(backend->dtr_gpio, 1);
++		k_sleep(K_MSEC(50));
+ 	}
+ 
+ 	atomic_set_bit(&backend->async.common.state,
+diff --git a/subsys/modem/backends/modem_backend_uart_async_hwfc.c b/subsys/modem/backends/modem_backend_uart_async_hwfc.c
+index df69c40b667..078ae5740ee 100644
+--- a/subsys/modem/backends/modem_backend_uart_async_hwfc.c
++++ b/subsys/modem/backends/modem_backend_uart_async_hwfc.c
+@@ -230,6 +230,7 @@ static int modem_backend_uart_async_hwfc_open(void *data)
+ 	}
+ 	if (backend->dtr_gpio) {
+ 		gpio_pin_set_dt(backend->dtr_gpio, 1);
++		k_sleep(K_MSEC(50));
+ 	}
+ 
+ 	atomic_clear(&backend->async.common.state);
+diff --git a/subsys/modem/backends/modem_backend_uart_isr.c b/subsys/modem/backends/modem_backend_uart_isr.c
+index 07112cb1e31..e96bd9dfdc9 100644
+--- a/subsys/modem/backends/modem_backend_uart_isr.c
++++ b/subsys/modem/backends/modem_backend_uart_isr.c
+@@ -116,6 +116,7 @@ static int modem_backend_uart_isr_open(void *data)
+ 	modem_backend_uart_isr_flush(backend);
+ 	if (backend->dtr_gpio) {
+ 		gpio_pin_set_dt(backend->dtr_gpio, 1);
++		k_sleep(K_MSEC(50));
+ 	}
+ 	uart_irq_rx_enable(backend->uart);
+ 	uart_irq_tx_enable(backend->uart);
+-- 
+2.53.0
+
