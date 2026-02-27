@@ -99,5 +99,5 @@ jobs:
             build/${{ matrix.sysbuild && matrix.app || '' }}/zephyr/zephyr.hex
             build/${{ matrix.sysbuild && matrix.app || '' }}/zephyr/zephyr.elf
             build/${{ matrix.sysbuild && matrix.app || '' }}/zephyr/zephyr.map
-            ${{ ((matrix.manifest == 'west-ncs.yml') && 'build/merged.hex') || '' }}
-            ${{ (matrix.sysbuild && (matrix.manifest == 'west-ncs.yml') && 'build/dfu_application.zip') || '' }}
+            ${{ ((matrix.manifest != 'west-zephyr.yml') && 'build/merged.hex') || '' }}
+            ${{ (matrix.sysbuild && (matrix.manifest != 'west-zephyr.yml') && 'build/dfu_application.zip') || '' }}
