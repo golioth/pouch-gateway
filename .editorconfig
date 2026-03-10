@@ -59,6 +59,7 @@ max_line_length = 75
 [Kconfig*]
 indent_style = space
 indent_size = 4
+max_line_length = 70
 
 # Markdown
 [*.md]
