@@ -63,8 +63,8 @@ recommend using these binaries as the fastest way to get started.
 
     b. Store your credentials
     ```
-    settings set wifi/ssid <your-wifi-ssid>
-    settings set wifi/psk <your-wifi-password>
+    wifi cred add -s <your-wifi-ssid> -p <your-wifi-password> -k 1
+    wifi cred auto_connect
     ```
 
 </details>
