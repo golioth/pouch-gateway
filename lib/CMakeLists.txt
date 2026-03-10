@@ -19,14 +19,11 @@ zephyr_library_link_libraries(mbedTLS)
 
 zephyr_library_get_current_dir_lib_name(${ZEPHYR_BASE} lib_name)
 
-if(CONFIG_GOLIOTH_COAP_HOST_URI STREQUAL "coaps://coap.golioth.io")
-  set(cert_name "server-prod.pem")
-elseif(CONFIG_GOLIOTH_COAP_HOST_URI STREQUAL "coaps://coap.golioth.dev")
-  set(cert_name "server-dev.pem")
-endif()
+get_filename_component(server_cert_pem "${CONFIG_POUCH_GATEWAY_SERVER_CERT_PEM}" REALPATH BASE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}")
 
 generate_inc_file_for_target(${lib_name}
-  ${cert_name}
+  ${server_cert_pem}
   ${ZEPHYR_BINARY_DIR}/include/generated/pouch_gateway_server.pem.inc)
 
 add_custom_command(OUTPUT info_decode.c

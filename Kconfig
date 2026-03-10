@@ -23,6 +23,14 @@ config POUCH_GATEWAY_SERVER_CERT_MAX_LEN
     help
       Maximum length of server certificate.
 
+config POUCH_GATEWAY_SERVER_CERT_PEM
+    string "Server certificate PEM file"
+    default "server-prod.pem"
+    help
+        Location of the CoAP server certificate in PEM format. Path
+        may be absolute or relative to the Pouch gateway `lib`
+        directory.
+
 config POUCH_GATEWAY_DOWNLINK_BLOCK_TIMEOUT
     int "Downlink timeout"
     default 10
