@@ -3,6 +3,7 @@ build:
   kconfig: Kconfig
   settings:
     board_root: .
+    snippet_root: zephyr
 samples:
   - samples
 runners:
