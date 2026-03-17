@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: pouch-gateway
 
@@ -114,7 +114,7 @@ jobs:
           echo "ARTIFACT_TARGET=${TARGET//\//-}${SUFFIX}" >> $GITHUB_OUTPUT
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.app }}-${{ steps.build.outputs.ARTIFACT_TARGET }}
           path: |
