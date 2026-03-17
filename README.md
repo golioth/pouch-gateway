@@ -16,6 +16,7 @@ configuration is likely required. The easiest way to get started is to use one
 of the following targets that are already configured for this application:
 
 - NXP FRDM-RW612
+- Nordic Thingy:91 X
 - Nordic nRF9160DK
 - Sentrius MG100 Gateway
 
@@ -64,6 +65,34 @@ recommend using these binaries as the fastest way to get started.
     ```
     wifi cred add -s <your-wifi-ssid> -p <your-wifi-password> -k 1
     wifi cred auto_connect
+    ```
+
+</details>
+
+<details>
+
+<summary>Flashing the Thingy:91 X</summary>
+
+1. Install the
+[`nrfutil`](https://www.nordicsemi.com/Products/Development-tools/nRF-Util)
+CLI tool.
+2. Program the nRF9151 Serial Modem Firmware
+
+    a. Position the SWD selection switch (`SW2`) to `nRF91`
+
+    b. Issue the following command:
+    ```
+    nrfutil device program --firmware thingy91x_nrf9151.hex --x-family nrf91
+    ```
+
+3. Program the nRF5340 Gateway Firmware
+
+    a. Power cycle the device and position the SWD selection switch (`SW2`) to
+    `nRF53`
+
+    b. Issue the following command:
+    ```
+    nrfutil device program --firmware thingy91x_nrf5340.hex --x-family nrf53 --core application
     ```
 
 </details>
@@ -146,6 +175,27 @@ west patch apply
 ```
 
 ### Build and run
+
+#### Thingy:91 X
+
+Serial modem firmware runs on the nRF9151 chip, providing LTE
+connectivity to the gateway over UART. Build and flash it by changing
+the `SWD` switch (`SW2`) to `nRF91`, then:
+
+```
+west build -p -b thingy91x/nrf9151/ns pouch-gateway/ncs-serial-modem/
+west flash
+```
+
+Gateway firmware runs on the nRF5340 chip. It runs the Bluetooth Host
+stack and communicates with the nRF9151 serial modem over UART for
+Internet access. Build and flash it by changing the `SWD` switch (`SW2`)
+to `nRF53`, then:
+
+```
+west build -p -b thingy91x/nrf5340/cpuapp --sysbuild pouch-gateway/gateway/
+west flash
+```
 
 #### nRF9160 DK
 

@@ -12,12 +12,14 @@ manifest:
           - cjson
           - cmsis_6
           - hal_nordic
+          - libmetal
           - littlefs
           - mbedtls
           - mcuboot
           - nrf
           - nrfxlib
           - oberon-psa-crypto
+          - open-amp
           - segger
           - trusted-firmware-m
           - zcbor
